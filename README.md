@@ -20,8 +20,8 @@ Stack minimal viabil (MVP) pregătit pentru dezvoltare rapidă cu Docker.
 - `app` (php-fpm) – rulează și queue + scheduler
 - `node` (vite dev server) – `http://localhost:5173`
 - `db` (postgres) – port `5432`
-- `redis` – port `6379`
-- `meilisearch` – `http://localhost:7700`
+- `redis` – port `6380`
+- `meilisearch` – `http://localhost:7701`
 - `minio` – API `:9000`, consola `http://localhost:9001`
 - `mailhog` – UI la `http://localhost:8025`
 
