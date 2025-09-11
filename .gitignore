@@ -2,17 +2,14 @@
 node_modules/
 npm-debug.log*
 pnpm-lock.yaml
-package-lock.json
 
 # PHP / Composer / Laravel
 vendor/
-bootstrap/cache/
 storage/*.key
 storage/app/public/
 storage/framework/
 storage/logs/
-.env
-.env.*
+ .env
 
 # Frontend build
 public/build/
@@ -29,4 +26,3 @@ Thumbs.db
 
 # Docker
 docker-data/
-
