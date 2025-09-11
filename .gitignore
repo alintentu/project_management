@@ -9,8 +9,7 @@ storage/*.key
 storage/app/public/
 storage/framework/
 storage/logs/
-.env
-.env.*
+ .env
 
 # Frontend build
 public/build/
