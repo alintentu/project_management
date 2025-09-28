@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\TaskStatus;
+use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
 use App\Models\Task;
 use App\Models\User;
@@ -15,7 +16,7 @@ class TaskController extends Controller
 {
     public function show(Task $task): Response
     {
-        $task->load('assignee');
+        $task->load(['assignee', 'media']);
 
         $users = User::query()
             ->select('id', 'name')
@@ -46,10 +47,45 @@ class TaskController extends Controller
                 'assignee' => $task->assignee?->only(['id', 'name']),
                 'created_at' => $task->created_at?->toDateTimeString(),
                 'updated_at' => $task->updated_at?->toDateTimeString(),
+                'attachments' => $task->getMedia('attachments')->map(fn ($media) => [
+                    'id' => $media->id,
+                    'name' => $media->name,
+                    'file_name' => $media->file_name,
+                    'mime_type' => $media->mime_type,
+                    'size' => $media->size,
+                    'size_label' => $this->humanReadableSize($media->size),
+                    'url' => $media->getUrl(),
+                ])->all(),
             ],
             'users' => $users,
             'statuses' => $statuses,
         ]);
+    }
+
+    public function store(StoreTaskRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
+
+        $statusValue = $data['status'] ?? TaskStatus::BACKLOG->value;
+        $status = TaskStatus::from($statusValue);
+
+        $position = Task::query()
+            ->where('status', $status->value)
+            ->max('position');
+
+        $task = Task::create([
+            'title' => $data['title'],
+            'description' => $data['description'] ?? null,
+            'status' => $status->value,
+            'assigned_to_id' => $data['assigned_to_id'] ?? null,
+            'due_date' => $data['due_date'] ?? null,
+            'position' => ($position ?? 0) + 1,
+        ]);
+
+        return Redirect::route('tasks.show', $task)
+            ->with('flash', [
+                'message' => 'Task creat cu succes.',
+            ]);
     }
 
     public function update(UpdateTaskRequest $request, Task $task): RedirectResponse
@@ -66,5 +102,14 @@ class TaskController extends Controller
             ->with('flash', [
                 'message' => 'Task actualizat cu succes.',
             ]);
+    }
+
+    private function humanReadableSize(int $bytes): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $factor = floor((strlen((string) $bytes) - 1) / 3);
+        $factor = max(0, min($factor, count($units) - 1));
+
+        return sprintf('%.2f %s', $bytes / (1024 ** $factor), $units[$factor]);
     }
 }

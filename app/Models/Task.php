@@ -8,10 +8,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class Task extends Model
+class Task extends Model implements HasMedia
 {
     use HasFactory;
+    use InteractsWithMedia;
 
     protected $fillable = [
         'title',
@@ -35,5 +38,11 @@ class Task extends Model
     public function scopeStatus(Builder $query, TaskStatus $status): Builder
     {
         return $query->where('status', $status->value);
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('attachments')
+            ->useDisk('public');
     }
 }

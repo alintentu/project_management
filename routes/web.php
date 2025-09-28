@@ -3,6 +3,7 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TaskAssigneeController;
+use App\Http\Controllers\TaskAttachmentController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskStatusController;
 use Illuminate\Foundation\Application;
@@ -32,6 +33,14 @@ Route::middleware('auth')->group(function () {
 
     Route::patch('/tasks/{task}/status', TaskStatusController::class)
         ->name('tasks.status');
+
+    Route::post('/tasks', [TaskController::class, 'store'])
+        ->name('tasks.store');
+
+    Route::post('/tasks/{task}/attachments', [TaskAttachmentController::class, 'store'])
+        ->name('tasks.attachments.store');
+    Route::delete('/tasks/{task}/attachments/{media}', [TaskAttachmentController::class, 'destroy'])
+        ->name('tasks.attachments.destroy');
 
     Route::get('/tasks/{task}', [TaskController::class, 'show'])
         ->name('tasks.show');

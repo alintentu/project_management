@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { computed, watch } from 'vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
     task: {
@@ -26,6 +26,13 @@ const form = useForm({
     due_date: props.task.due_date ?? '',
 });
 
+const attachmentForm = useForm({
+    attachments: [],
+});
+
+const fileInput = ref(null);
+const deletingAttachmentId = ref(null);
+
 watch(
     () => props.task,
     (task) => {
@@ -42,6 +49,7 @@ const statusOptions = computed(() => props.statuses);
 const userOptions = computed(() => props.users);
 const page = usePage();
 const flashMessage = computed(() => page.props.flash?.message ?? null);
+const attachments = computed(() => props.task.attachments ?? []);
 
 const submit = () => {
     form.transform((data) => ({
@@ -50,6 +58,44 @@ const submit = () => {
         due_date: data.due_date === '' ? null : data.due_date,
     })).patch(route('tasks.update', props.task.id), {
         preserveScroll: true,
+    });
+};
+
+const handleAttachmentSelection = (event) => {
+    attachmentForm.attachments = Array.from(event.target.files ?? []);
+};
+
+const submitAttachments = () => {
+    if (attachmentForm.attachments.length === 0) {
+        return;
+    }
+
+    attachmentForm.post(route('tasks.attachments.store', props.task.id), {
+        preserveScroll: true,
+        forceFormData: true,
+        onSuccess: () => {
+            attachmentForm.reset();
+            attachmentForm.clearErrors();
+            if (fileInput.value) {
+                fileInput.value.value = '';
+            }
+        },
+        onError: () => {
+            if (fileInput.value) {
+                fileInput.value.value = '';
+            }
+        },
+    });
+};
+
+const deleteAttachment = (attachmentId) => {
+    deletingAttachmentId.value = attachmentId;
+
+    router.delete(route('tasks.attachments.destroy', [props.task.id, attachmentId]), {
+        preserveScroll: true,
+        onFinish: () => {
+            deletingAttachmentId.value = null;
+        },
     });
 };
 </script>
@@ -196,6 +242,75 @@ const submit = () => {
                             </button>
                         </div>
                     </form>
+                </div>
+
+                <div class="rounded-lg bg-white p-6 shadow-sm">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                        Atașamente
+                    </h3>
+
+                    <form
+                        class="mt-4 flex flex-col gap-4 md:flex-row"
+                        @submit.prevent="submitAttachments"
+                        enctype="multipart/form-data"
+                    >
+                        <input
+                            ref="fileInput"
+                            type="file"
+                            multiple
+                            @change="handleAttachmentSelection"
+                            class="block w-full cursor-pointer rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <button
+                            type="submit"
+                            class="inline-flex items-center justify-center rounded bg-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:opacity-50"
+                            :disabled="attachmentForm.processing || attachmentForm.attachments.length === 0"
+                        >
+                            Încarcă
+                        </button>
+                    </form>
+                    <p v-if="attachmentForm.errors.attachments" class="mt-2 text-sm text-red-500">
+                        {{ attachmentForm.errors.attachments }}
+                    </p>
+                    <p v-if="attachmentForm.errors['attachments.0']" class="mt-2 text-sm text-red-500">
+                        {{ attachmentForm.errors['attachments.0'] }}
+                    </p>
+
+                    <ul class="mt-6 space-y-3">
+                        <li
+                            v-for="attachment in attachments"
+                            :key="attachment.id"
+                            class="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-sm text-gray-700"
+                        >
+                            <div>
+                                <a
+                                    :href="attachment.url"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="font-medium text-blue-600 hover:text-blue-500"
+                                >
+                                    {{ attachment.file_name }}
+                                </a>
+                                <p class="text-xs text-gray-400">
+                                    {{ attachment.size_label }}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="inline-flex items-center rounded border border-transparent px-2 py-1 text-xs font-semibold text-red-600 hover:text-red-500 focus:outline-none"
+                                :disabled="deletingAttachmentId === attachment.id"
+                                @click="deleteAttachment(attachment.id)"
+                            >
+                                Șterge
+                            </button>
+                        </li>
+                        <li
+                            v-if="attachments.length === 0"
+                            class="rounded border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-400"
+                        >
+                            Nu există atașamente încă.
+                        </li>
+                    </ul>
                 </div>
 
                 <div class="rounded-lg bg-white p-6 shadow-sm">
