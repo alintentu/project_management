@@ -30,6 +30,8 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        $user->syncRoles(['admin']);
+
         Task::factory()
             ->count(3)
             ->backlog()

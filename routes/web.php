@@ -6,6 +6,7 @@ use App\Http\Controllers\TaskAssigneeController;
 use App\Http\Controllers\TaskAttachmentController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskStatusController;
+use App\Http\Controllers\UserManagementController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -27,6 +28,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::get('/users', [UserManagementController::class, 'index'])
+        ->middleware('can:user.manage')
+        ->name('users.index');
+    Route::post('/users', [UserManagementController::class, 'store'])
+        ->middleware('can:user.manage')
+        ->name('users.store');
 
     Route::patch('/tasks/{task}/assignee', TaskAssigneeController::class)
         ->name('tasks.assignee');

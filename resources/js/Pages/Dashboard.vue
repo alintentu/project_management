@@ -18,18 +18,49 @@ const props = defineProps({
     },
 });
 
-const accentByStatus = {
-    backlog: 'border-slate-300',
-    in_progress: 'border-blue-500',
-    in_review: 'border-amber-400',
-    done: 'border-emerald-500',
+const statusConfig = {
+    backlog: {
+        accent: 'border-l-4 border-slate-300',
+        card: 'bg-slate-50',
+        chip: 'bg-slate-200 text-slate-700',
+        icon: '🗂️',
+    },
+    in_progress: {
+        accent: 'border-l-4 border-blue-500',
+        card: 'bg-blue-50',
+        chip: 'bg-blue-100 text-blue-700',
+        icon: '⚙️',
+    },
+    in_review: {
+        accent: 'border-l-4 border-amber-400',
+        card: 'bg-amber-50',
+        chip: 'bg-amber-100 text-amber-700',
+        icon: '🧐',
+    },
+    done: {
+        accent: 'border-l-4 border-emerald-500',
+        card: 'bg-emerald-50',
+        chip: 'bg-emerald-100 text-emerald-700',
+        icon: '✅',
+    },
+    default: {
+        accent: 'border-l-4 border-slate-200',
+        card: 'bg-white',
+        chip: 'bg-slate-100 text-slate-600',
+        icon: '🗂️',
+    },
 };
 
 const sections = computed(() =>
-    props.sections.map((section) => ({
-        ...section,
-        accent: `border-l-4 ${accentByStatus[section.key] ?? 'border-slate-200'}`,
-    })),
+    props.sections.map((section) => {
+        const config = statusConfig[section.key] ?? statusConfig.default;
+
+        return {
+            ...section,
+            accent: config.accent,
+            config,
+        };
+    }),
 );
 
 const topSectionKeys = ['in_progress', 'in_review', 'done'];
@@ -165,7 +196,8 @@ const handleStatusChange = (taskId, event) => {
                         <header
                             class="border-b border-gray-200 px-6 py-4"
                         >
-                            <h3 class="text-lg font-semibold text-gray-900">
+                            <h3 class="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                                <span class="text-xl">{{ section.config.icon }}</span>
                                 {{ section.title }}
                             </h3>
                         </header>
@@ -175,10 +207,11 @@ const handleStatusChange = (taskId, event) => {
                                 v-for="task in section.tasks"
                                 :key="task.id"
                                 class="flex flex-col gap-2 px-6 py-4"
-                                :class="section.accent"
+                                :class="[section.accent, section.config.card]"
                             >
                                 <div class="flex items-start justify-between gap-4">
-                                    <h4 class="text-base font-medium text-gray-900">
+                                    <h4 class="flex items-center gap-2 text-base font-medium text-gray-900">
+                                        <span class="text-xl">{{ section.config.icon }}</span>
                                         <Link
                                             :href="route('tasks.show', task.id)"
                                             class="hover:text-blue-600"
@@ -188,7 +221,8 @@ const handleStatusChange = (taskId, event) => {
                                     </h4>
                                     <span
                                         v-if="task.due_date"
-                                        class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                                        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                                        :class="section.config.chip"
                                     >
                                         Scadent: {{ task.due_date }}
                                     </span>
@@ -262,7 +296,8 @@ const handleStatusChange = (taskId, event) => {
                         class="border-b border-gray-200 px-6 py-4"
                     >
                         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <h3 class="text-lg font-semibold text-gray-900">
+                            <h3 class="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                                <span class="text-xl">{{ backlogSection.config.icon }}</span>
                                 {{ backlogSection.title }}
                             </h3>
                             <button
@@ -397,10 +432,11 @@ const handleStatusChange = (taskId, event) => {
                             v-for="task in backlogSection.tasks"
                             :key="task.id"
                             class="flex flex-col gap-2 px-6 py-4"
-                            :class="backlogSection.accent"
+                            :class="[backlogSection.accent, backlogSection.config.card]"
                         >
                             <div class="flex items-start justify-between gap-4">
-                                <h4 class="text-base font-medium text-gray-900">
+                                <h4 class="flex items-center gap-2 text-base font-medium text-gray-900">
+                                    <span class="text-xl">{{ backlogSection.config.icon }}</span>
                                     <Link
                                         :href="route('tasks.show', task.id)"
                                         class="hover:text-blue-600"
@@ -410,7 +446,8 @@ const handleStatusChange = (taskId, event) => {
                                 </h4>
                                 <span
                                     v-if="task.due_date"
-                                    class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                                    class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                                    :class="backlogSection.config.chip"
                                 >
                                     Scadent: {{ task.due_date }}
                                 </span>

@@ -50,6 +50,16 @@ class PermissionsSeeder extends Seeder
                 'document.view','document.upload','document.update',
                 'report.view','report.export'
             ],
+            'architect' => [
+                'project.view','site.view','task.view','task.create','task.update','task.comment',
+                'document.view','document.upload','document.update',
+                'report.view'
+            ],
+            'constructor' => [
+                'project.view','site.view','task.view','task.create','task.update',
+                'document.view','document.upload',
+                'timesheet.submit'
+            ],
             'document_controller' => [
                 'document.view-any','document.view','document.upload','document.update','document.approve','document.download','report.export'
             ],
@@ -100,4 +110,3 @@ class PermissionsSeeder extends Seeder
         }
     }
 }
-
