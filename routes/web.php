@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PlanningController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TaskAssigneeController;
 use App\Http\Controllers\TaskAttachmentController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskStatusController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\WorkBreakdownStructureController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -23,6 +25,10 @@ Route::get('/', function () {
 Route::get('/dashboard', DashboardController::class)
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
+
+Route::get('/planning', PlanningController::class)
+    ->middleware(['auth', 'verified'])
+    ->name('planning');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -54,6 +60,16 @@ Route::middleware('auth')->group(function () {
         ->name('tasks.show');
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])
         ->name('tasks.update');
+
+    Route::post('/wbs', [WorkBreakdownStructureController::class, 'store'])
+        ->middleware('can:project.update')
+        ->name('wbs.store');
+    Route::put('/wbs/{wbs}', [WorkBreakdownStructureController::class, 'update'])
+        ->middleware('can:project.update')
+        ->name('wbs.update');
+    Route::delete('/wbs/{wbs}', [WorkBreakdownStructureController::class, 'destroy'])
+        ->middleware('can:project.update')
+        ->name('wbs.destroy');
 });
 
 require __DIR__.'/auth.php';
