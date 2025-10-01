@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TaskStatus as TaskStatusEnum;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\WorkBreakdownStructure;
@@ -15,15 +16,30 @@ class PlanningController extends Controller
     public function __invoke(Request $request): Response
     {
         $projects = Project::query()
-            ->select('id', 'name', 'code', 'status')
+            ->withCount(['tasks as completed_tasks_count' => fn ($query) => $query->where('status', TaskStatusEnum::DONE->value)])
+            ->withCount('tasks')
+            ->select('id', 'name', 'code', 'status', 'planned_start_date', 'planned_end_date', 'actual_start_date', 'actual_end_date')
             ->orderBy('name')
             ->get()
-            ->map(fn (Project $project) => [
-                'id' => $project->id,
-                'name' => $project->name,
-                'code' => $project->code,
-                'status' => $project->status,
-            ]);
+            ->map(function (Project $project) {
+                $progress = $project->tasks_count > 0
+                    ? round(($project->completed_tasks_count / $project->tasks_count) * 100, 1)
+                    : 0;
+
+                return [
+                    'id' => $project->id,
+                    'name' => $project->name,
+                    'code' => $project->code,
+                    'status' => $project->status,
+                    'planned_start_date' => optional($project->planned_start_date)->toDateString(),
+                    'planned_end_date' => optional($project->planned_end_date)->toDateString(),
+                    'actual_start_date' => optional($project->actual_start_date)->toDateString(),
+                    'actual_end_date' => optional($project->actual_end_date)->toDateString(),
+                    'tasks_count' => $project->tasks_count,
+                    'completed_tasks_count' => $project->completed_tasks_count,
+                    'progress_percent' => $progress,
+                ];
+            });
 
         $selectedProjectId = $request->query('project_id', $projects->first()['id'] ?? null);
 

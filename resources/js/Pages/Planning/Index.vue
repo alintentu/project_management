@@ -40,6 +40,14 @@ watch(
     }
 );
 
+const selectedProject = computed(() => {
+    if (!selectedProjectId.value) {
+        return null;
+    }
+
+    return props.projects.find((project) => Number(project.id) === Number(selectedProjectId.value)) ?? null;
+});
+
 const createForm = useForm({
     project_id: props.selectedProjectId,
     parent_id: '',
@@ -72,12 +80,20 @@ const flatWbsOptions = computed(() => {
     return options;
 });
 
-const handleProjectChange = (event) => {
-    const id = event.target.value || null;
-    router.get(route('planning'), { project_id: id }, {
+const selectProject = (id) => {
+    if (Number(id) === Number(selectedProjectId.value)) {
+        return;
+    }
+
+    router.get(route('planning'), { project_id: id ?? '' }, {
         preserveScroll: true,
         preserveState: true,
     });
+};
+
+const handleProjectChange = (event) => {
+    const id = event.target.value || null;
+    selectProject(id);
 };
 
 const submitCreate = () => {
@@ -188,6 +204,13 @@ const WbsNode = defineComponent({
                     <p class="text-sm text-gray-500">
                         Vizualizează structura WBS, resursele și jurnalul zilnic pentru proiectul selectat.
                     </p>
+                    <p
+                        v-if="selectedProject"
+                        class="mt-1 text-xs text-gray-500"
+                    >
+                        Proiect curent: <span class="font-semibold text-gray-700">{{ selectedProject.name }}</span>
+                        — Progres {{ selectedProject.progress_percent ?? 0 }}% • {{ selectedProject.status }}
+                    </p>
                 </div>
                 <div class="sm:w-64">
                     <label class="sr-only" for="project">Selectează proiectul</label>
@@ -212,6 +235,61 @@ const WbsNode = defineComponent({
 
         <div class="py-12">
             <div class="space-y-6 px-4 sm:px-6 lg:px-10">
+                <section
+                    v-if="projects.length"
+                    class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                >
+                    <article
+                        v-for="project in projects"
+                        :key="project.id"
+                        class="cursor-pointer rounded-lg border p-4 shadow-sm transition"
+                        :class="Number(project.id) === Number(selectedProjectId) ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-slate-300'"
+                        @click="selectProject(project.id)"
+                    >
+                        <div class="flex items-center justify-between text-xs uppercase tracking-wide text-gray-400">
+                            <span>{{ project.code || 'Project' }}</span>
+                            <span class="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                {{ project.status }}
+                            </span>
+                        </div>
+                        <h4 class="mt-1 text-base font-semibold text-gray-900">
+                            {{ project.name }}
+                        </h4>
+
+                        <dl class="mt-3 grid gap-2 text-xs text-gray-600">
+                            <div class="flex items-center justify-between">
+                                <dt>Taskuri</dt>
+                                <dd>{{ project.completed_tasks_count }} / {{ project.tasks_count }}</dd>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <dt>Planificat</dt>
+                                <dd>
+                                    {{ project.planned_start_date || '—' }} → {{ project.planned_end_date || '—' }}
+                                </dd>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <dt>Real</dt>
+                                <dd>
+                                    {{ project.actual_start_date || '—' }} → {{ project.actual_end_date || '—' }}
+                                </dd>
+                            </div>
+                        </dl>
+
+                        <div class="mt-3">
+                            <div class="flex items-center justify-between text-xs text-gray-500">
+                                <span>Progres</span>
+                                <span>{{ project.progress_percent ?? 0 }}%</span>
+                            </div>
+                            <div class="mt-1 h-2 rounded-full bg-slate-100">
+                                <div
+                                    class="h-2 rounded-full bg-blue-500"
+                                    :style="{ width: `${Math.min(100, Math.max(0, project.progress_percent ?? 0))}%` }"
+                                ></div>
+                            </div>
+                        </div>
+                    </article>
+                </section>
+
                 <div v-if="!selectedProjectId" class="rounded-lg bg-white p-6 text-center text-sm text-gray-500 shadow-sm">
                     Selectează un proiect pentru a vedea detaliile de planificare.
                 </div>
