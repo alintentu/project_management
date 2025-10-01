@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('resource_task', function (Blueprint $table) {
+        Schema::create('resource_unit_task', function (Blueprint $table) {
             $table->id();
             $table->foreignId('resource_unit_id')->constrained()->cascadeOnDelete();
             $table->foreignId('task_id')->constrained()->cascadeOnDelete();
@@ -30,6 +30,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('resource_task');
+        Schema::dropIfExists('resource_unit_task');
     }
 };
