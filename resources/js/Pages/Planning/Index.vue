@@ -16,6 +16,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    timeline: {
+        type: Array,
+        default: () => [],
+    },
     resources: {
         type: Array,
         default: () => [],
@@ -390,7 +394,257 @@ const WbsNode = defineComponent({
                         </div>
                     </section>
                 </div>
+
+                <section v-if="timeline.length" class="rounded-lg bg-white p-6 shadow-sm">
+                    <h3 class="text-lg font-semibold text-gray-900">Timeline planificat</h3>
+                    <p class="text-sm text-gray-500">Vizualizare simplă a intervalelor planificate pentru taskuri.</p>
+
+                    <div class="mt-4 overflow-x-auto">
+                        <div class="min-w-full space-y-1">
+                            <TimelineRow
+                                v-for="item in timeline"
+                                :key="item.id"
+                                :item="item"
+                            />
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     </AuthenticatedLayout>
 </template>
+
+<script>
+import { defineComponent, h, watch } from 'vue';
+import { useForm as useInertiaForm } from '@inertiajs/vue3';
+
+const WbsNode = defineComponent({
+    name: 'WbsNode',
+    props: {
+        node: {
+            type: Object,
+            required: true,
+        },
+    },
+    emits: ['delete-node'],
+    setup(props, { emit }) {
+        const renderTasks = () => {
+            if (!props.node.tasks?.length) {
+                return h('p', { class: 'mt-2 text-xs text-gray-400' }, 'Nu există taskuri asociate.');
+            }
+
+            return h(
+                'ul',
+                { class: 'mt-2 space-y-1 text-sm text-gray-600' },
+                props.node.tasks.map((task) =>
+                    h('li', { key: task.id, class: 'flex items-center justify-between rounded bg-white px-2 py-1' }, [
+                        h('span', null, task.title),
+                        h('span', { class: 'text-xs text-gray-400' }, `${task.progress_percent ?? 0}%`),
+                    ])
+                )
+            );
+        };
+
+        return () =>
+            h('div', { class: 'space-y-3' }, [
+                h('div', { class: 'rounded border border-slate-200 p-4' }, [
+                    h('div', { class: 'flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between' }, [
+                        h('div', { class: 'space-y-1' }, [
+                            h('p', { class: 'font-medium text-gray-900 flex items-center gap-2' }, [
+                                h('span', { class: 'text-lg' }, '🧱'),
+                                h('span', null, props.node.name),
+                            ]),
+                            props.node.code
+                                ? h('p', { class: 'text-xs uppercase tracking-wide text-gray-400' }, `Cod: ${props.node.code}`)
+                                : null,
+                            h('p', { class: 'text-xs text-gray-500' }, [
+                                props.node.phase_type ? `Fază: ${props.node.phase_type}` : 'Fără tip definit',
+                                props.node.planned_start_date || props.node.planned_end_date
+                                    ? ` • ${props.node.planned_start_date ?? '?'} → ${props.node.planned_end_date ?? '?'}`
+                                    : null,
+                            ]),
+                            renderTasks(),
+                        ]),
+                        h(
+                            'button',
+                            {
+                                class: 'self-start rounded border border-transparent px-2 py-1 text-xs font-semibold text-red-600 hover:text-red-500',
+                                onClick: () => emit('delete-node', props.node.id),
+                            },
+                            'Șterge'
+                        ),
+                    ]),
+                ]),
+                props.node.children?.length
+                    ? h(
+                          'div',
+                          { class: 'ml-3 border-l-2 border-dashed border-slate-200 pl-3' },
+                          props.node.children.map((child) =>
+                              h(WbsNode, {
+                                  key: child.id,
+                                  node: child,
+                                  onDeleteNode: (payload) => emit('delete-node', payload),
+                              })
+                          )
+                      )
+                    : null,
+            ]);
+    },
+});
+
+const TimelineRow = defineComponent({
+    name: 'TimelineRow',
+    props: {
+        item: {
+            type: Object,
+            required: true,
+        },
+    },
+    setup(props) {
+        const dayWidth = 16;
+        const parseDate = (dateString) => (dateString ? new Date(dateString) : null);
+        const plannedStart = parseDate(props.item.planned_start_date);
+        const plannedEnd = parseDate(props.item.planned_end_date);
+        const actualStart = parseDate(props.item.actual_start_date);
+        const actualEnd = parseDate(props.item.actual_end_date);
+        const durationDays = plannedStart && plannedEnd
+            ? Math.max(1, Math.round((plannedEnd - plannedStart) / (1000 * 60 * 60 * 24)))
+            : 1;
+        const barWidth = durationDays * dayWidth;
+
+        const form = useInertiaForm({
+            planned_start_date: props.item.planned_start_date ?? '',
+            planned_end_date: props.item.planned_end_date ?? '',
+            actual_start_date: props.item.actual_start_date ?? '',
+            actual_end_date: props.item.actual_end_date ?? '',
+            progress_percent: props.item.progress_percent ?? 0,
+        });
+
+        watch(
+            () => props.item,
+            (value) => {
+                form.planned_start_date = value.planned_start_date ?? '';
+                form.planned_end_date = value.planned_end_date ?? '';
+                form.actual_start_date = value.actual_start_date ?? '';
+                form.actual_end_date = value.actual_end_date ?? '';
+                form.progress_percent = value.progress_percent ?? 0;
+            },
+            { deep: true }
+        );
+
+        const submit = () => {
+            form.patch(route('tasks.schedule', props.item.id), {
+                preserveScroll: true,
+            });
+        };
+
+        return () =>
+            h('div', { class: 'rounded border border-slate-100 p-3 text-sm' }, [
+                h('div', { class: 'flex items-center justify-between text-xs text-gray-500' }, [
+                    h('span', { class: 'font-semibold text-gray-700' }, props.item.title),
+                    h('span', null, props.item.wbs_name || '—'),
+                ]),
+                h('div', { class: 'mt-2 flex items-center gap-3' }, [
+                    h('div', { class: 'flex-1 overflow-hidden rounded bg-slate-100' }, [
+                        plannedStart && plannedEnd
+                            ? h('div', {
+                                  class: 'relative flex items-center rounded bg-sky-400 text-xs text-white shadow-inner',
+                                  style: {
+                                      width: `${barWidth}px`,
+                                      minWidth: '48px',
+                                      padding: '0.25rem 0.5rem',
+                                      marginLeft: '0',
+                                  },
+                              }, [
+                                  h('span', null, `${props.item.planned_start_date ?? '?'} → ${props.item.planned_end_date ?? '?'} (${durationDays} zile)`),
+                              ])
+                            : h('span', { class: 'px-2 py-1 text-xs text-slate-500' }, 'Fără date planificate'),
+                    ]),
+                    h('div', { class: 'text-xs text-gray-500' }, `${props.item.progress_percent ?? 0}%`),
+                ]),
+                h('form', {
+                    class: 'mt-3 grid gap-3 md:grid-cols-5',
+                    onSubmit: (event) => {
+                        event.preventDefault();
+                        submit();
+                    },
+                }, [
+                    h('div', { class: 'flex flex-col gap-1' }, [
+                        h('label', { class: 'text-xs font-medium text-gray-500' }, 'Start planificat'),
+                        h('input', {
+                            type: 'date',
+                            class: 'rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+                            value: form.planned_start_date,
+                            onInput: (event) => (form.planned_start_date = event.target.value),
+                        }),
+                    ]),
+                    h('div', { class: 'flex flex-col gap-1' }, [
+                        h('label', { class: 'text-xs font-medium text-gray-500' }, 'Final planificat'),
+                        h('input', {
+                            type: 'date',
+                            class: 'rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+                            value: form.planned_end_date,
+                            onInput: (event) => (form.planned_end_date = event.target.value),
+                        }),
+                        form.errors.planned_end_date
+                            ? h('p', { class: 'text-xs text-red-500' }, form.errors.planned_end_date)
+                            : null,
+                    ]),
+                    h('div', { class: 'flex flex-col gap-1' }, [
+                        h('label', { class: 'text-xs font-medium text-gray-500' }, 'Start actual'),
+                        h('input', {
+                            type: 'date',
+                            class: 'rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+                            value: form.actual_start_date,
+                            onInput: (event) => (form.actual_start_date = event.target.value),
+                        }),
+                    ]),
+                    h('div', { class: 'flex flex-col gap-1' }, [
+                        h('label', { class: 'text-xs font-medium text-gray-500' }, 'Final actual'),
+                        h('input', {
+                            type: 'date',
+                            class: 'rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+                            value: form.actual_end_date,
+                            onInput: (event) => (form.actual_end_date = event.target.value),
+                        }),
+                        form.errors.actual_end_date
+                            ? h('p', { class: 'text-xs text-red-500' }, form.errors.actual_end_date)
+                            : null,
+                    ]),
+                    h('div', { class: 'flex flex-col gap-1' }, [
+                        h('label', { class: 'text-xs font-medium text-gray-500' }, 'Progres %'),
+                        h('input', {
+                            type: 'number',
+                            min: 0,
+                            max: 100,
+                            step: 1,
+                            class: 'rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+                            value: form.progress_percent,
+                            onInput: (event) => (form.progress_percent = event.target.value),
+                        }),
+                        form.errors.progress_percent
+                            ? h('p', { class: 'text-xs text-red-500' }, form.errors.progress_percent)
+                            : null,
+                    ]),
+                    h('div', { class: 'md:col-span-5 flex justify-end pt-2' }, [
+                        h('button', {
+                            type: 'submit',
+                            class: 'inline-flex items-center rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50',
+                            disabled: form.processing,
+                        }, 'Salvează'),
+                    ]),
+                ]),
+                actualStart && actualEnd
+                    ? h('p', { class: 'mt-1 text-xs text-emerald-600' }, `Real: ${props.item.actual_start_date ?? '?'} → ${props.item.actual_end_date ?? '?'}`)
+                    : null,
+            ]);
+    },
+});
+
+export default {
+    components: {
+        WbsNode,
+        TimelineRow,
+    },
+};
+</script>

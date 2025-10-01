@@ -60,6 +60,9 @@ Route::middleware('auth')->group(function () {
         ->name('tasks.show');
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])
         ->name('tasks.update');
+    Route::patch('/tasks/{task}/schedule', [TaskController::class, 'updateSchedule'])
+        ->middleware('can:task.update')
+        ->name('tasks.schedule');
 
     Route::post('/wbs', [WorkBreakdownStructureController::class, 'store'])
         ->middleware('can:project.update')

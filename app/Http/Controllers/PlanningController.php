@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Project;
+use App\Models\Task;
 use App\Models\WorkBreakdownStructure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -38,6 +39,7 @@ class PlanningController extends Controller
         $wbsTree = [];
         $resources = [];
         $siteLogs = [];
+        $timeline = [];
 
         if ($project) {
             $wbsItems = WorkBreakdownStructure::query()
@@ -84,6 +86,8 @@ class PlanningController extends Controller
                 'summary' => $log->summary,
                 'manpower_count' => $log->manpower_count,
             ]);
+
+            $timeline = $this->buildTimeline($project, $wbsItems);
         }
 
         return Inertia::render('Planning/Index', [
@@ -92,6 +96,7 @@ class PlanningController extends Controller
             'wbsTree' => $wbsTree,
             'resources' => $resources,
             'siteLogs' => $siteLogs,
+            'timeline' => $timeline,
         ]);
     }
 
@@ -128,5 +133,37 @@ class PlanningController extends Controller
         };
 
         return $buildNode(null);
+    }
+
+    private function buildTimeline(Project $project, Collection $wbsItems): array
+    {
+        $tasks = $project->tasks()
+            ->select(
+                'id',
+                'title',
+                'wbs_id',
+                'planned_start_date',
+                'planned_end_date',
+                'actual_start_date',
+                'actual_end_date',
+                'progress_percent'
+            )
+            ->orderBy('planned_start_date')
+            ->get();
+
+        return $tasks->map(function (Task $task) use ($wbsItems) {
+            $wbsName = optional($wbsItems->firstWhere('id', $task->wbs_id))->name;
+
+            return [
+                'id' => $task->id,
+                'title' => $task->title,
+                'wbs_name' => $wbsName,
+                'planned_start_date' => optional($task->planned_start_date)->toDateString(),
+                'planned_end_date' => optional($task->planned_end_date)->toDateString(),
+                'actual_start_date' => optional($task->actual_start_date)->toDateString(),
+                'actual_end_date' => optional($task->actual_end_date)->toDateString(),
+                'progress_percent' => $task->progress_percent,
+            ];
+        })->all();
     }
 }
