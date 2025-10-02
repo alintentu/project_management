@@ -19,6 +19,16 @@ return new class extends Migration
             $table->unsignedBigInteger('assigned_to_id')->nullable();
             $table->date('due_date')->nullable();
             $table->unsignedInteger('position')->default(0);
+            $table->foreignId('project_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('wbs_id')->nullable();
+            $table->date('planned_start_date')->nullable();
+            $table->date('planned_end_date')->nullable();
+            $table->date('actual_start_date')->nullable();
+            $table->date('actual_end_date')->nullable();
+            $table->unsignedInteger('planned_duration_days')->nullable();
+            $table->unsignedInteger('actual_duration_days')->nullable();
+            $table->decimal('progress_percent', 5, 2)->default(0);
+            $table->json('metadata')->nullable();
             $table->timestamps();
 
             $table->foreign('assigned_to_id')
@@ -26,6 +36,7 @@ return new class extends Migration
                 ->on('users')
                 ->nullOnDelete();
             $table->index(['status', 'position']);
+            $table->index(['project_id', 'wbs_id']);
         });
     }
 

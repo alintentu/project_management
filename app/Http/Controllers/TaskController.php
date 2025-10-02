@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\TaskStatus;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
+use App\Http\Requests\UpdateTaskScheduleRequest;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -102,6 +103,27 @@ class TaskController extends Controller
             ->with('flash', [
                 'message' => 'Task actualizat cu succes.',
             ]);
+    }
+
+    public function updateSchedule(UpdateTaskScheduleRequest $request, Task $task): RedirectResponse
+    {
+        $data = $request->validated();
+
+        $task->fill($data);
+
+        if ($task->planned_start_date && $task->planned_end_date) {
+            $task->planned_duration_days = $task->planned_start_date->diffInDays($task->planned_end_date) + 1;
+        }
+
+        if ($task->actual_start_date && $task->actual_end_date) {
+            $task->actual_duration_days = $task->actual_start_date->diffInDays($task->actual_end_date) + 1;
+        }
+
+        $task->save();
+
+        return Redirect::back()->with('flash', [
+            'message' => 'Programarea taskului a fost actualizată.',
+        ]);
     }
 
     private function humanReadableSize(int $bytes): string
