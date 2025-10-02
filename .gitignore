@@ -6,11 +6,17 @@ pnpm-lock.yaml
 # PHP / Composer / Laravel
 vendor/
 storage/*.key
-storage/app/public/
-storage/framework/
-storage/logs/
- .env
- .env.*
+storage/app/public/*
+!storage/app/public/.gitignore
+storage/app/private/*
+!storage/app/private/.gitignore
+storage/framework/*
+!storage/framework/.gitignore
+!storage/framework/**/*.gitignore
+storage/logs/*
+!storage/logs/.gitignore
+.env
+.env.*
 
 # Frontend build
 public/build/
