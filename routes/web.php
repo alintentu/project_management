@@ -3,6 +3,7 @@
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PlanningController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TaskAssigneeController;
 use App\Http\Controllers\TaskAttachmentController;
 use App\Http\Controllers\TaskController;
@@ -41,6 +42,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/users', [UserManagementController::class, 'store'])
         ->middleware('can:user.manage')
         ->name('users.store');
+
+    Route::post('/projects', [ProjectController::class, 'store'])
+        ->middleware('can:project.create')
+        ->name('projects.store');
 
     Route::patch('/tasks/{task}/assignee', TaskAssigneeController::class)
         ->name('tasks.assignee');

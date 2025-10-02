@@ -1,6 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, defineComponent, h, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -31,6 +31,24 @@ const props = defineProps({
 });
 
 const selectedProjectId = ref(props.selectedProjectId);
+const showProjectForm = ref(false);
+const projectStatuses = [
+    { value: 'planning', label: 'Planificare' },
+    { value: 'executie', label: 'Execuție' },
+    { value: 'in_verificare', label: 'În verificare' },
+    { value: 'finalizat', label: 'Finalizat' },
+];
+
+const projectForm = useForm({
+    name: '',
+    code: '',
+    status: 'planning',
+    planned_start_date: '',
+    planned_end_date: '',
+    actual_start_date: '',
+    actual_end_date: '',
+    description: '',
+});
 
 watch(
     () => props.selectedProjectId,
@@ -106,6 +124,17 @@ const submitCreate = () => {
     });
 };
 
+const submitProject = () => {
+    projectForm.post(route('projects.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showProjectForm.value = false;
+            projectForm.reset();
+            projectForm.status = 'planning';
+        },
+    });
+};
+
 const deleteNode = (nodeId) => {
     if (!confirm('Sigur dorești să ștergi această structură WBS?')) {
         return;
@@ -126,6 +155,16 @@ const WbsNode = defineComponent({
     },
     emits: ['delete-node'],
     setup(props, { emit }) {
+        const plannedRange = () => {
+            const start = props.node.calculated_planned_start_date ?? props.node.planned_start_date;
+            const end = props.node.calculated_planned_end_date ?? props.node.planned_end_date;
+            if (!start && !end) {
+                return 'Fără interval planificat';
+            }
+
+            return `${start ?? '?'} → ${end ?? '?'}`;
+        };
+
         const renderTasks = () => {
             if (!props.node.tasks?.length) {
                 return h('p', { class: 'mt-2 text-xs text-gray-400' }, 'Nu există taskuri asociate.');
@@ -155,10 +194,11 @@ const WbsNode = defineComponent({
                             props.node.code
                                 ? h('p', { class: 'text-xs uppercase tracking-wide text-gray-400' }, `Cod: ${props.node.code}`)
                                 : null,
-                            h('p', { class: 'text-xs text-gray-500' }, [
-                                props.node.phase_type ? `Fază: ${props.node.phase_type}` : 'Fără tip definit',
-                                props.node.planned_start_date || props.node.planned_end_date
-                                    ? ` • ${props.node.planned_start_date ?? '?'} → ${props.node.planned_end_date ?? '?'}`
+                            h('p', { class: 'text-xs text-gray-500 flex flex-col sm:flex-row sm:items-center sm:gap-2' }, [
+                                h('span', null, props.node.phase_type ? `Fază: ${props.node.phase_type}` : 'Fără tip definit'),
+                                h('span', { class: 'text-xs text-sky-600 font-medium' }, plannedRange()),
+                                props.node.calculated_progress !== null
+                                    ? h('span', { class: 'text-xs text-emerald-600' }, `Prog.: ${props.node.calculated_progress}%`)
                                     : null,
                             ]),
                             renderTasks(),
@@ -189,6 +229,9 @@ const WbsNode = defineComponent({
             ]);
     },
 });
+
+const page = usePage();
+const flashMessage = computed(() => page.props.flash?.message ?? null);
 </script>
 
 <template>
@@ -212,29 +255,189 @@ const WbsNode = defineComponent({
                         — Progres {{ selectedProject.progress_percent ?? 0 }}% • {{ selectedProject.status }}
                     </p>
                 </div>
-                <div class="sm:w-64">
-                    <label class="sr-only" for="project">Selectează proiectul</label>
-                    <select
-                        id="project"
-                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        :value="selectedProjectId ?? ''"
-                        @change="handleProjectChange"
-                    >
-                        <option value="">Selectează proiect</option>
-                        <option
-                            v-for="project in projects"
-                            :key="project.id"
-                            :value="project.id"
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <div class="sm:w-64">
+                        <label class="sr-only" for="project">Selectează proiectul</label>
+                        <select
+                            id="project"
+                            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            :value="selectedProjectId ?? ''"
+                            @change="handleProjectChange"
                         >
-                            {{ project.code ? `${project.code} — ${project.name}` : project.name }}
-                        </option>
-                    </select>
+                            <option value="">Selectează proiect</option>
+                            <option
+                                v-for="project in projects"
+                                :key="project.id"
+                                :value="project.id"
+                            >
+                                {{ project.code ? `${project.code} — ${project.name}` : project.name }}
+                            </option>
+                        </select>
+                    </div>
+                    <button
+                        type="button"
+                        class="inline-flex items-center justify-center rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        @click="showProjectForm = !showProjectForm"
+                    >
+                        {{ showProjectForm ? 'Închide' : 'Proiect nou' }}
+                    </button>
                 </div>
             </div>
         </template>
 
         <div class="py-12">
             <div class="space-y-6 px-4 sm:px-6 lg:px-10">
+                <div
+                    v-if="flashMessage"
+                    class="rounded border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700"
+                >
+                    {{ flashMessage }}
+                </div>
+
+                <section
+                    v-if="showProjectForm"
+                    class="space-y-6 rounded-lg bg-white p-6 shadow-sm"
+                >
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Proiect nou</h3>
+                            <p class="text-sm text-gray-500">Completează detaliile esențiale pentru planificare.</p>
+                        </div>
+                    </div>
+
+                    <form class="space-y-4" @submit.prevent="submitProject">
+                        <div class="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500" for="project-name">Nume proiect</label>
+                                <input
+                                    id="project-name"
+                                    v-model="projectForm.name"
+                                    type="text"
+                                    class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    required
+                                />
+                                <p v-if="projectForm.errors.name" class="mt-1 text-xs text-red-500">
+                                    {{ projectForm.errors.name }}
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500" for="project-code">Cod</label>
+                                <input
+                                    id="project-code"
+                                    v-model="projectForm.code"
+                                    type="text"
+                                    class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                <p v-if="projectForm.errors.code" class="mt-1 text-xs text-red-500">
+                                    {{ projectForm.errors.code }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-4 md:grid-cols-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500" for="project-status">Status</label>
+                                <select
+                                    id="project-status"
+                                    v-model="projectForm.status"
+                                    class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                >
+                                    <option
+                                        v-for="option in projectStatuses"
+                                        :key="option.value"
+                                        :value="option.value"
+                                    >
+                                        {{ option.label }}
+                                    </option>
+                                </select>
+                                <p v-if="projectForm.errors.status" class="mt-1 text-xs text-red-500">
+                                    {{ projectForm.errors.status }}
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500" for="project-planned-start">Start planificat</label>
+                                <input
+                                    id="project-planned-start"
+                                    v-model="projectForm.planned_start_date"
+                                    type="date"
+                                    class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                <p v-if="projectForm.errors.planned_start_date" class="mt-1 text-xs text-red-500">
+                                    {{ projectForm.errors.planned_start_date }}
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500" for="project-planned-end">Final planificat</label>
+                                <input
+                                    id="project-planned-end"
+                                    v-model="projectForm.planned_end_date"
+                                    type="date"
+                                    class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                <p v-if="projectForm.errors.planned_end_date" class="mt-1 text-xs text-red-500">
+                                    {{ projectForm.errors.planned_end_date }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500" for="project-actual-start">Start actual</label>
+                                <input
+                                    id="project-actual-start"
+                                    v-model="projectForm.actual_start_date"
+                                    type="date"
+                                    class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                <p v-if="projectForm.errors.actual_start_date" class="mt-1 text-xs text-red-500">
+                                    {{ projectForm.errors.actual_start_date }}
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500" for="project-actual-end">Final actual</label>
+                                <input
+                                    id="project-actual-end"
+                                    v-model="projectForm.actual_end_date"
+                                    type="date"
+                                    class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                <p v-if="projectForm.errors.actual_end_date" class="mt-1 text-xs text-red-500">
+                                    {{ projectForm.errors.actual_end_date }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500" for="project-description">Descriere</label>
+                            <textarea
+                                id="project-description"
+                                v-model="projectForm.description"
+                                rows="3"
+                                class="mt-1 block w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            ></textarea>
+                            <p v-if="projectForm.errors.description" class="mt-1 text-xs text-red-500">
+                                {{ projectForm.errors.description }}
+                            </p>
+                        </div>
+
+                        <div class="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                class="inline-flex items-center rounded border border-transparent px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-500"
+                                @click="showProjectForm = false"
+                            >
+                                Renunță
+                            </button>
+                            <button
+                                type="submit"
+                                class="inline-flex items-center rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+                                :disabled="projectForm.processing"
+                            >
+                                Creează proiect
+                            </button>
+                        </div>
+                    </form>
+                </section>
                 <section
                     v-if="projects.length"
                     class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"

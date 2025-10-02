@@ -123,6 +123,35 @@ class PlanningController extends Controller
         $buildNode = function ($parentId) use (&$buildNode, $grouped) {
             return $grouped->get($parentId, collect())
                 ->map(function (WorkBreakdownStructure $node) use (&$buildNode) {
+                    $children = $buildNode($node->id);
+
+                    $taskPlannedStarts = $node->tasks->pluck('planned_start_date')->filter();
+                    $taskPlannedEnds = $node->tasks->pluck('planned_end_date')->filter();
+                    $taskProgressValues = $node->tasks->pluck('progress_percent')->filter();
+
+                    $childPlannedStarts = collect($children)->pluck('calculated_planned_start_date')->filter();
+                    $childPlannedEnds = collect($children)->pluck('calculated_planned_end_date')->filter();
+                    $childProgressValues = collect($children)->pluck('calculated_progress')->filter();
+
+                    $calculatedPlannedStart = collect([$node->planned_start_date])
+                        ->merge($taskPlannedStarts)
+                        ->merge($childPlannedStarts)
+                        ->filter()
+                        ->min()?->toDateString();
+
+                    $calculatedPlannedEnd = collect([$node->planned_end_date])
+                        ->merge($taskPlannedEnds)
+                        ->merge($childPlannedEnds)
+                        ->filter()
+                        ->max()?->toDateString();
+
+                    $progressCollection = collect($taskProgressValues)
+                        ->merge($childProgressValues);
+
+                    $calculatedProgress = $progressCollection->count() > 0
+                        ? round($progressCollection->avg(), 1)
+                        : null;
+
                     return [
                         'id' => $node->id,
                         'name' => $node->name,
@@ -132,6 +161,9 @@ class PlanningController extends Controller
                         'planned_start_date' => optional($node->planned_start_date)->toDateString(),
                         'planned_end_date' => optional($node->planned_end_date)->toDateString(),
                         'description' => $node->description,
+                        'calculated_planned_start_date' => $calculatedPlannedStart,
+                        'calculated_planned_end_date' => $calculatedPlannedEnd,
+                        'calculated_progress' => $calculatedProgress,
                         'tasks' => $node->tasks->map(fn ($task) => [
                             'id' => $task->id,
                             'title' => $task->title,
@@ -141,7 +173,7 @@ class PlanningController extends Controller
                             'planned_end_date' => optional($task->planned_end_date)->toDateString(),
                             'assignee' => $task->assignee?->only(['id', 'name']),
                         ])->all(),
-                        'children' => $buildNode($node->id),
+                        'children' => $children,
                     ];
                 })
                 ->values()
