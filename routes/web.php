@@ -6,6 +6,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TaskAssigneeController;
 use App\Http\Controllers\TaskAttachmentController;
+use App\Http\Controllers\TaskOrderController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskStatusController;
 use App\Http\Controllers\UserManagementController;
@@ -52,6 +53,10 @@ Route::middleware('auth')->group(function () {
 
     Route::patch('/tasks/{task}/status', TaskStatusController::class)
         ->name('tasks.status');
+
+    Route::post('/tasks/order', TaskOrderController::class)
+        ->middleware('can:task.update')
+        ->name('tasks.order');
 
     Route::post('/tasks', [TaskController::class, 'store'])
         ->name('tasks.store');

@@ -27,6 +27,7 @@ class DashboardController extends Controller
             ->map(fn (TaskStatus $status) => [
                 'value' => $status->value,
                 'label' => $status->label(),
+                'meta' => $status->theme(),
             ])
             ->all();
 
@@ -44,6 +45,7 @@ class DashboardController extends Controller
                 'key' => $status->value,
                 'title' => $status->label(),
                 'tasks' => $this->tasksByStatus($status),
+                'meta' => $status->theme(),
             ])
             ->all();
     }
@@ -65,6 +67,7 @@ class DashboardController extends Controller
                 'due_date' => $task->due_date?->toDateString(),
                 'assignee' => $task->assignee?->only(['id', 'name']),
                 'assignee_id' => $task->assigned_to_id,
+                'meta' => $task->status->theme(),
             ])
             ->all();
     }
