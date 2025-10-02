@@ -33,6 +33,7 @@ class TaskController extends Controller
             ->map(fn (TaskStatus $status) => [
                 'value' => $status->value,
                 'label' => $status->label(),
+                'meta' => $status->theme(),
             ])
             ->all();
 
@@ -48,6 +49,7 @@ class TaskController extends Controller
                 'assignee' => $task->assignee?->only(['id', 'name']),
                 'created_at' => $task->created_at?->toDateTimeString(),
                 'updated_at' => $task->updated_at?->toDateTimeString(),
+                'meta' => $task->status->theme(),
                 'attachments' => $task->getMedia('attachments')->map(fn ($media) => [
                     'id' => $media->id,
                     'name' => $media->name,
