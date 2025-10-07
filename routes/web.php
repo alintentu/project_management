@@ -4,6 +4,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PlanningController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectFlowDashboardController;
 use App\Http\Controllers\TaskAssigneeController;
 use App\Http\Controllers\TaskAttachmentController;
 use App\Http\Controllers\TaskOrderController;
@@ -47,6 +48,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/projects', [ProjectController::class, 'store'])
         ->middleware('can:project.create')
         ->name('projects.store');
+
+    Route::get('/projects/{project}/insights/flow', ProjectFlowDashboardController::class)
+        ->name('projects.insights.flow');
 
     Route::patch('/tasks/{task}/assignee', TaskAssigneeController::class)
         ->name('tasks.assignee');

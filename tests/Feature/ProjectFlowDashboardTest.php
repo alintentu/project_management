@@ -1,0 +1,68 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Enums\TaskStatus;
+use App\Models\Project;
+use App\Models\Task;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Testing\Fluent\AssertableJson;
+use Tests\TestCase;
+
+final class ProjectFlowDashboardTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_it_returns_flow_insights_for_a_project(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $project = Project::query()->create([
+            'name' => 'Alpha CRM',
+            'code' => 'ALPHA',
+            'description' => 'Internal platform upgrade.',
+            'status' => 'active',
+        ]);
+
+        Task::factory()->backlog()->create([
+            'project_id' => $project->id,
+            'title' => 'Draft requirements',
+        ]);
+
+        Task::factory()->state([
+            'status' => TaskStatus::IN_REVIEW->value,
+            'metadata' => ['review_notes' => 'Awaiting QA sign-off'],
+        ])->create([
+            'project_id' => $project->id,
+            'title' => 'Implement authentication',
+        ]);
+
+        Task::factory()->done()->create([
+            'project_id' => $project->id,
+            'title' => 'Ship landing page',
+            'actual_end_date' => Carbon::now()->subDays(2),
+        ]);
+
+        $response = $this->getJson(route('projects.insights.flow', $project));
+
+        $response->assertOk()->assertJson(fn (AssertableJson $json) => $json
+            ->where('project.id', $project->id)
+            ->where('project.name', $project->name)
+            ->where('insights.summary.total', 3)
+            ->has('insights.summary.status', fn (AssertableJson $status) => $status
+                ->where('backlog', 1)
+                ->where('in_progress', 0)
+                ->where('in_review', 1)
+                ->where('done', 1)
+            )
+            ->has('insights.summary.velocity')
+            ->where('insights.summary.review_ratio', 1 / 3)
+            ->where('insights.focus', 'Finalize review for 1 tasks before starting new work.')
+        );
+    }
+}
