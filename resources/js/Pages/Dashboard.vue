@@ -16,6 +16,18 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    projects: {
+        type: Array,
+        default: () => [],
+    },
+    initialProjectId: {
+        type: [Number, String, null],
+        default: null,
+    },
+    flowInsights: {
+        type: Object,
+        default: () => null,
+    },
 });
 
 const fallbackTheme = {
@@ -46,6 +58,173 @@ const statusesByValue = computed(() => {
 
     return map;
 });
+
+const initialProjectId = ref(
+    props.initialProjectId !== null && props.initialProjectId !== undefined
+        ? String(props.initialProjectId)
+        : ''
+);
+const selectedProjectId = ref(initialProjectId.value);
+const insights = ref(props.flowInsights ?? null);
+const isLoadingInsights = ref(false);
+const flowError = ref(null);
+const hasLoadedInitialInsights = ref(false);
+
+const selectedProject = computed(() => {
+    if (!selectedProjectId.value) {
+        return null;
+    }
+
+    return (
+        props.projects.find(
+            (project) => String(project.id) === String(selectedProjectId.value)
+        ) ?? null
+    );
+});
+
+const hasProjects = computed(
+    () => (props.projects ?? []).length > 0
+);
+
+const percentFormatter = new Intl.NumberFormat('en-US', {
+    style: 'percent',
+    maximumFractionDigits: 0,
+});
+
+const statusBreakdown = computed(() => {
+    const summary = insights.value?.summary?.status ?? {};
+
+    return Object.entries(summary).map(([key, count]) => {
+        const meta = statusesByValue.value[key];
+
+        return {
+            key,
+            count,
+            label: meta?.label ?? key.replace(/_/g, ' '),
+            theme: mergeTheme(meta?.meta),
+        };
+    });
+});
+
+const totalTasks = computed(() => insights.value?.summary?.total ?? 0);
+
+const formattedReviewRatio = computed(() => {
+    const ratio = insights.value?.summary?.review_ratio;
+
+    if (typeof ratio !== 'number') {
+        return null;
+    }
+
+    return percentFormatter.format(ratio);
+});
+
+const transitions = computed(
+    () => insights.value?.summary?.transitions ?? {}
+);
+
+const velocityEntries = computed(() => {
+    const velocity = insights.value?.summary?.velocity ?? {};
+
+    return Object.entries(velocity)
+        .map(([weekStart, completed]) => ({
+            weekStart,
+            completed,
+        }))
+        .sort((a, b) => (a.weekStart > b.weekStart ? -1 : 1));
+});
+
+const fetchFlowInsights = async (projectId) => {
+    if (!projectId) {
+        insights.value = null;
+        flowError.value = null;
+        return;
+    }
+
+    isLoadingInsights.value = true;
+    flowError.value = null;
+
+    try {
+        const response = await window.axios.get(
+            route('projects.insights.flow', projectId)
+        );
+
+        insights.value = response.data?.insights ?? null;
+    } catch (error) {
+        flowError.value = 'Unable to load project insights right now.';
+        console.error(error);
+    } finally {
+        isLoadingInsights.value = false;
+    }
+};
+
+watch(
+    () => props.projects,
+    (projects) => {
+        if (!projects || projects.length === 0) {
+            selectedProjectId.value = '';
+            insights.value = null;
+            hasLoadedInitialInsights.value = false;
+            return;
+        }
+
+        const exists = projects.some(
+            (project) => String(project.id) === String(selectedProjectId.value)
+        );
+
+        if (!exists) {
+            selectedProjectId.value = String(projects[0].id);
+        }
+    },
+    { immediate: true }
+);
+
+watch(
+    () => props.initialProjectId,
+    (value) => {
+        initialProjectId.value =
+            value !== null && value !== undefined ? String(value) : '';
+
+        if (!hasLoadedInitialInsights.value) {
+            selectedProjectId.value = initialProjectId.value;
+            insights.value = props.flowInsights ?? null;
+        }
+    }
+);
+
+watch(
+    () => props.flowInsights,
+    (value) => {
+        if (!hasLoadedInitialInsights.value) {
+            insights.value = value ?? null;
+        }
+    }
+);
+
+watch(
+    selectedProjectId,
+    (projectId) => {
+        if (!projectId) {
+            insights.value = null;
+            flowError.value = null;
+            return;
+        }
+
+        if (
+            !hasLoadedInitialInsights.value &&
+            projectId === initialProjectId.value &&
+            props.flowInsights
+        ) {
+            insights.value = props.flowInsights;
+            flowError.value = null;
+            hasLoadedInitialInsights.value = true;
+            return;
+        }
+
+        hasLoadedInitialInsights.value = true;
+        fetchFlowInsights(projectId);
+    },
+    { immediate: true }
+);
 
 const buildColumns = (sections) =>
     sections.map((section) => {
@@ -401,6 +580,187 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
 
         <div class="py-12">
             <div class="space-y-6 px-4 sm:px-6 lg:px-10">
+                <section class="rounded-lg bg-white shadow-sm">
+                    <div class="flex flex-col gap-6 p-6">
+                        <div
+                            class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+                        >
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">
+                                    Project Flow Insights
+                                </h3>
+                                <p class="mt-1 text-sm text-gray-500">
+                                    Live analytics distilled from task transitions.
+                                </p>
+                                <p
+                                    v-if="selectedProject"
+                                    class="mt-2 text-xs uppercase tracking-wide text-slate-400"
+                                >
+                                    Showing insights for
+                                    <span class="font-semibold text-slate-600">
+                                        {{ selectedProject.name }}
+                                    </span>
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <label
+                                    class="text-sm font-medium text-slate-600"
+                                    for="project-flow-selector"
+                                >
+                                    Project
+                                </label>
+                                <select
+                                    id="project-flow-selector"
+                                    v-model="selectedProjectId"
+                                    class="rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                                    :disabled="!hasProjects"
+                                >
+                                    <option value="" disabled>
+                                        Select a project
+                                    </option>
+                                    <option
+                                        v-for="project in props.projects"
+                                        :key="project.id"
+                                        :value="String(project.id)"
+                                    >
+                                        {{ project.name }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div
+                            v-if="!hasProjects"
+                            class="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500"
+                        >
+                            Add a project to unlock flow analytics.
+                        </div>
+                        <div v-else>
+                            <div
+                                v-if="isLoadingInsights"
+                                class="rounded-lg border border-dashed border-blue-200 bg-blue-50/60 p-6 text-sm text-blue-600"
+                            >
+                                Loading insights...
+                            </div>
+                            <div
+                                v-else-if="flowError"
+                                class="rounded-lg border border-dashed border-rose-200 bg-rose-50/80 p-6 text-sm text-rose-600"
+                            >
+                                {{ flowError }}
+                            </div>
+                            <div v-else-if="insights" class="space-y-6">
+                                <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                    <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                        Focus suggestion
+                                    </h4>
+                                    <p class="mt-2 text-base text-slate-700">
+                                        {{
+                                            insights.focus ??
+                                            'Flow looks healthy. Consider replenishing the backlog.'
+                                        }}
+                                    </p>
+                                </div>
+
+                                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                    <div
+                                        v-for="status in statusBreakdown"
+                                        :key="status.key"
+                                        class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+                                    >
+                                        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                            {{ status.label }}
+                                        </p>
+                                        <p class="mt-2 text-3xl font-semibold text-slate-900">
+                                            {{ status.count }}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                            Total tasks
+                                        </p>
+                                        <p class="mt-2 text-3xl font-semibold text-slate-900">
+                                            {{ totalTasks }}
+                                        </p>
+                                    </div>
+                                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                            Review ratio
+                                        </p>
+                                        <p class="mt-2 text-3xl font-semibold text-slate-900">
+                                            {{ formattedReviewRatio ?? '—' }}
+                                        </p>
+                                        <p class="mt-1 text-xs text-slate-500">
+                                            Share of work currently waiting in review.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="grid gap-4 lg:grid-cols-2">
+                                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                        <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                            Weekly velocity
+                                        </h4>
+                                        <ul class="mt-3 space-y-2 text-sm text-slate-600">
+                                            <li
+                                                v-for="entry in velocityEntries"
+                                                :key="entry.weekStart"
+                                                class="flex items-center justify-between rounded border border-slate-100 px-3 py-2"
+                                            >
+                                                <span class="font-medium text-slate-700">
+                                                    {{ entry.weekStart }}
+                                                </span>
+                                                <span class="text-slate-500">
+                                                    {{ entry.completed }} completed
+                                                </span>
+                                            </li>
+                                            <li
+                                                v-if="velocityEntries.length === 0"
+                                                class="rounded border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
+                                            >
+                                                No completions recorded yet.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                        <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                            Status transitions
+                                        </h4>
+                                        <ul class="mt-3 space-y-2 text-sm text-slate-600">
+                                            <li
+                                                v-for="(count, key) in transitions"
+                                                :key="key"
+                                                class="flex items-center justify-between rounded border border-slate-100 px-3 py-2"
+                                            >
+                                                <span class="font-medium text-slate-700">
+                                                    {{ statusesByValue[key]?.label ?? key.replace(/_/g, ' ') }}
+                                                </span>
+                                                <span class="text-slate-500">
+                                                    {{ count }} moves
+                                                </span>
+                                            </li>
+                                            <li
+                                                v-if="Object.keys(transitions).length === 0"
+                                                class="rounded border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
+                                            >
+                                                Flow transitions will appear after tasks advance.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div
+                                v-else
+                                class="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500"
+                            >
+                                Select a project to load flow insights.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <div class="grid gap-6 md:grid-cols-3">
                     <section
                         v-for="section in topSections"

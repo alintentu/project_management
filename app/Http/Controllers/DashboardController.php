@@ -3,15 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Enums\TaskStatus;
+use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ProjectFlowDashboardService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request, ProjectFlowDashboardService $flowService): Response
     {
         $users = User::query()
             ->select('id', 'name')
@@ -31,10 +33,24 @@ class DashboardController extends Controller
             ])
             ->all();
 
+        $projects = Project::query()
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
+        $defaultProject = $projects->first();
+        $flowSnapshot = $defaultProject ? $flowService->snapshot($defaultProject) : null;
+
         return Inertia::render('Dashboard', [
             'sections' => $this->sections(),
             'users' => $users,
             'statuses' => $statuses,
+            'projects' => $projects->map(fn (Project $project) => [
+                'id' => $project->id,
+                'name' => $project->name,
+            ]),
+            'initialProjectId' => $defaultProject?->id,
+            'flowInsights' => $flowSnapshot,
         ]);
     }
 
