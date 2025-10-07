@@ -109,13 +109,13 @@ final class InsightTask
         }
     }
 
-    public function moveTo(string $status): void
+    public function moveTo(string $status, ?DateTimeImmutable $occurredAt = null): void
     {
         WorkflowStatus::assertValid($status);
         $this->status = $status;
 
         if ($status === WorkflowStatus::DONE && $this->completedAt === null) {
-            $this->completedAt = new DateTimeImmutable('now');
+            $this->completedAt = $occurredAt ?? new DateTimeImmutable('now');
         }
     }
 

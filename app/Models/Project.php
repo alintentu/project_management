@@ -49,4 +49,9 @@ class Project extends Model
     {
         return $this->hasMany(SiteLog::class);
     }
+
+    public function taskStatusTransitions(): HasMany
+    {
+        return $this->hasMany(TaskStatusTransition::class);
+    }
 }

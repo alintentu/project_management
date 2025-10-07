@@ -12,14 +12,20 @@ use App\Domain\ProjectInsights\WorkflowStatus;
 use App\Enums\TaskStatus as TaskStatusEnum;
 use App\Models\Project;
 use App\Models\Task;
+use App\Models\TaskStatusTransition;
 use DateTimeImmutable;
 use DateTimeInterface;
+use InvalidArgumentException;
 
 final class ProjectFlowDashboardService
 {
+    private ?DateTimeImmutable $lastTransitionAt = null;
+
     public function build(Project $project): ProjectDashboard
     {
         $project->loadMissing('tasks.assignee');
+
+        $this->lastTransitionAt = null;
 
         $events = new DomainEvents();
         $board = new ProjectBoard(
@@ -28,14 +34,77 @@ final class ProjectFlowDashboardService
             $events
         );
 
+        $insightTasks = [];
+        $targetStatuses = [];
+
         /** @var Task $task */
         foreach ($project->tasks as $task) {
             [$insightTask, $targetStatus] = $this->makeInsightTask($task);
             $board->addTask($insightTask);
+            $taskId = (int) $task->getKey();
 
-            if ($targetStatus !== WorkflowStatus::BACKLOG) {
-                $board->moveTask($insightTask->id(), $targetStatus);
+            $insightTasks[$taskId] = $insightTask;
+            $targetStatuses[$taskId] = $targetStatus;
+        }
+
+        $taskIds = array_keys($targetStatuses);
+        $transitionsApplied = array_fill_keys($taskIds, false);
+
+        if ($taskIds !== []) {
+            $transitions = TaskStatusTransition::query()
+                ->whereIn('task_id', $taskIds)
+                ->orderBy('occurred_at')
+                ->orderBy('id')
+                ->get();
+
+            foreach ($transitions as $transition) {
+                $taskId = (int) $transition->task_id;
+                $status = $transition->to_status;
+
+                if (! isset($targetStatuses[$taskId])) {
+                    continue;
+                }
+
+                try {
+                    WorkflowStatus::assertValid($status);
+                } catch (InvalidArgumentException) {
+                    continue;
+                }
+
+                $occurredAt = $transition->occurred_at
+                    ? DateTimeImmutable::createFromInterface($transition->occurred_at)
+                    : null;
+
+                $board->moveTask((string) $taskId, $status, $occurredAt);
+                $transitionsApplied[$taskId] = true;
+                $this->registerTransitionTime($occurredAt);
             }
+        }
+
+        foreach ($targetStatuses as $taskId => $targetStatus) {
+            if ($targetStatus === WorkflowStatus::BACKLOG) {
+                continue;
+            }
+
+            $currentStatus = $insightTasks[$taskId]->status();
+            $hasTransitions = $transitionsApplied[$taskId] ?? false;
+
+            if (! $hasTransitions) {
+                if ($currentStatus !== $targetStatus) {
+                    $insightTasks[$taskId]->moveTo($targetStatus);
+                }
+
+                continue;
+            }
+
+            if ($currentStatus === $targetStatus) {
+                continue;
+            }
+
+            $timestamp = new DateTimeImmutable('now');
+
+            $board->moveTask((string) $taskId, $targetStatus, $timestamp);
+            $this->registerTransitionTime($timestamp);
         }
 
         return new ProjectDashboard($board, $events);
@@ -44,10 +113,17 @@ final class ProjectFlowDashboardService
     public function snapshot(Project $project): array
     {
         $dashboard = $this->build($project);
+        $generatedAt = new DateTimeImmutable('now');
+        $projectUpdatedAt = $this->toImmutable($project->updated_at);
 
         return [
             'summary' => $dashboard->summary(),
             'focus' => $dashboard->focusSuggestion(),
+            'meta' => [
+                'generated_at' => $generatedAt->format(DateTimeInterface::ATOM),
+                'project_updated_at' => $projectUpdatedAt?->format(DateTimeInterface::ATOM),
+                'last_transition_at' => $this->lastTransitionAt?->format(DateTimeInterface::ATOM),
+            ],
         ];
     }
 
@@ -111,5 +187,16 @@ final class ProjectFlowDashboardService
         }
 
         return new DateTimeImmutable($value);
+    }
+
+    private function registerTransitionTime(?DateTimeImmutable $occurredAt): void
+    {
+        if ($occurredAt === null) {
+            return;
+        }
+
+        if ($this->lastTransitionAt === null || $occurredAt > $this->lastTransitionAt) {
+            $this->lastTransitionAt = $occurredAt;
+        }
     }
 }

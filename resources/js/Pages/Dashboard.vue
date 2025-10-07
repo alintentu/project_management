@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps({
     sections: {
@@ -91,6 +91,11 @@ const percentFormatter = new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 0,
 });
 
+const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+});
+
 const statusBreakdown = computed(() => {
     const summary = insights.value?.summary?.status ?? {};
 
@@ -133,14 +138,116 @@ const velocityEntries = computed(() => {
         .sort((a, b) => (a.weekStart > b.weekStart ? -1 : 1));
 });
 
-const fetchFlowInsights = async (projectId) => {
-    if (!projectId) {
-        insights.value = null;
-        flowError.value = null;
+const POLLING_INTERVAL_MS = 60_000;
+let pollingTimer = null;
+
+const toast = ref(null);
+let toastTimeoutId = null;
+const lastFocusMessage = ref(props.flowInsights?.focus ?? null);
+
+const lastGeneratedAt = computed(() => {
+    const value = insights.value?.meta?.generated_at;
+
+    if (!value) {
+        return null;
+    }
+
+    return dateTimeFormatter.format(new Date(value));
+});
+
+const lastTransitionAt = computed(() => {
+    const value = insights.value?.meta?.last_transition_at;
+
+    if (!value) {
+        return null;
+    }
+
+    return dateTimeFormatter.format(new Date(value));
+});
+
+const projectUpdatedAt = computed(() => {
+    const value = insights.value?.meta?.project_updated_at;
+
+    if (!value) {
+        return null;
+    }
+
+    return dateTimeFormatter.format(new Date(value));
+});
+
+const showToast = (message, variant = 'info') => {
+    if (!message) {
         return;
     }
 
-    isLoadingInsights.value = true;
+    if (toastTimeoutId) {
+        clearTimeout(toastTimeoutId);
+    }
+
+    toast.value = {
+        id: Date.now(),
+        message,
+        variant,
+    };
+
+    toastTimeoutId = window.setTimeout(() => {
+        toast.value = null;
+        toastTimeoutId = null;
+    }, 6000);
+};
+
+const handleInsightsUpdate = (nextInsights, { suppressToast = false } = {}) => {
+    const nextFocus = nextInsights?.focus ?? null;
+
+    if (!suppressToast && nextFocus && nextFocus !== lastFocusMessage.value) {
+        showToast(nextFocus, 'focus');
+    }
+
+    lastFocusMessage.value = nextFocus;
+};
+
+const resetInsights = () => {
+    insights.value = null;
+    flowError.value = null;
+    handleInsightsUpdate(null, { suppressToast: true });
+
+    if (toastTimeoutId) {
+        clearTimeout(toastTimeoutId);
+        toastTimeoutId = null;
+    }
+
+    toast.value = null;
+};
+
+const stopPolling = () => {
+    if (pollingTimer !== null) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+    }
+};
+
+const startPolling = () => {
+    stopPolling();
+
+    if (!selectedProjectId.value) {
+        return;
+    }
+
+    pollingTimer = window.setInterval(() => {
+        fetchFlowInsights(selectedProjectId.value, { suppressSpinner: true });
+    }, POLLING_INTERVAL_MS);
+};
+
+const fetchFlowInsights = async (projectId, { suppressSpinner = false, suppressToast = false } = {}) => {
+    if (!projectId) {
+        resetInsights();
+        return;
+    }
+
+    if (!suppressSpinner) {
+        isLoadingInsights.value = true;
+    }
+
     flowError.value = null;
 
     try {
@@ -148,12 +255,18 @@ const fetchFlowInsights = async (projectId) => {
             route('projects.insights.flow', projectId)
         );
 
-        insights.value = response.data?.insights ?? null;
+        const payload = response.data?.insights ?? null;
+
+        insights.value = payload;
+        handleInsightsUpdate(payload, { suppressToast });
     } catch (error) {
         flowError.value = 'Unable to load project insights right now.';
         console.error(error);
+        showToast(flowError.value, 'error');
     } finally {
-        isLoadingInsights.value = false;
+        if (!suppressSpinner) {
+            isLoadingInsights.value = false;
+        }
     }
 };
 
@@ -161,9 +274,10 @@ watch(
     () => props.projects,
     (projects) => {
         if (!projects || projects.length === 0) {
+            stopPolling();
             selectedProjectId.value = '';
-            insights.value = null;
             hasLoadedInitialInsights.value = false;
+            resetInsights();
             return;
         }
 
@@ -187,6 +301,7 @@ watch(
         if (!hasLoadedInitialInsights.value) {
             selectedProjectId.value = initialProjectId.value;
             insights.value = props.flowInsights ?? null;
+            handleInsightsUpdate(insights.value, { suppressToast: true });
         }
     }
 );
@@ -196,6 +311,7 @@ watch(
     (value) => {
         if (!hasLoadedInitialInsights.value) {
             insights.value = value ?? null;
+            handleInsightsUpdate(insights.value, { suppressToast: true });
         }
     }
 );
@@ -203,9 +319,10 @@ watch(
 watch(
     selectedProjectId,
     (projectId) => {
+        stopPolling();
+
         if (!projectId) {
-            insights.value = null;
-            flowError.value = null;
+            resetInsights();
             return;
         }
 
@@ -217,11 +334,18 @@ watch(
             insights.value = props.flowInsights;
             flowError.value = null;
             hasLoadedInitialInsights.value = true;
+            handleInsightsUpdate(insights.value, { suppressToast: true });
+            startPolling();
             return;
         }
 
         hasLoadedInitialInsights.value = true;
-        fetchFlowInsights(projectId);
+
+        Promise.resolve(
+            fetchFlowInsights(projectId)
+        ).finally(() => {
+            startPolling();
+        });
     },
     { immediate: true }
 );
@@ -254,6 +378,14 @@ watch(
 
 watch(statusesByValue, () => {
     columns.value = buildColumns(props.sections);
+});
+
+onBeforeUnmount(() => {
+    stopPolling();
+
+    if (toastTimeoutId) {
+        clearTimeout(toastTimeoutId);
+    }
 });
 
 const topSectionKeys = ['in_progress', 'in_review', 'done'];
@@ -578,6 +710,34 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
             </div>
         </template>
 
+        <Transition
+            enter-active-class="transition ease-out duration-300"
+            enter-from-class="translate-y-2 opacity-0"
+            enter-to-class="translate-y-0 opacity-100"
+            leave-active-class="transition ease-in duration-200"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+        >
+            <div
+                v-if="toast"
+                :key="toast.id"
+                class="fixed right-6 top-24 z-40 flex max-w-sm items-start gap-3 rounded-lg px-4 py-3 text-sm text-white shadow-lg"
+                :class="toast.variant === 'error' ? 'bg-rose-600/95' : 'bg-slate-900/95'"
+            >
+                <span class="text-lg">
+                    {{ toast.variant === 'error' ? '⚠️' : '⚡️' }}
+                </span>
+                <div class="flex-1">
+                    <p class="font-semibold">
+                        {{ toast.variant === 'error' ? 'Attention' : 'Flow focus' }}
+                    </p>
+                    <p class="mt-1 leading-snug">
+                        {{ toast.message }}
+                    </p>
+                </div>
+            </div>
+        </Transition>
+
         <div class="py-12">
             <div class="space-y-6 px-4 sm:px-6 lg:px-10">
                 <section class="rounded-lg bg-white shadow-sm">
@@ -627,6 +787,21 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
                                     </option>
                                 </select>
                             </div>
+                        </div>
+
+                        <div
+                            v-if="insights && (lastGeneratedAt || lastTransitionAt || projectUpdatedAt)"
+                            class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500"
+                        >
+                            <span v-if="lastGeneratedAt">
+                                Snapshot generated {{ lastGeneratedAt }}
+                            </span>
+                            <span v-if="lastTransitionAt">
+                                Last transition {{ lastTransitionAt }}
+                            </span>
+                            <span v-if="projectUpdatedAt">
+                                Project updated {{ projectUpdatedAt }}
+                            </span>
                         </div>
 
                         <div

@@ -20,6 +20,6 @@ final class ProjectFlowDashboardController extends Controller
                 'name' => $project->name,
             ],
             'insights' => $snapshot,
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 }
