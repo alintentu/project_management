@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
@@ -89,5 +90,10 @@ class Task extends Model implements HasMedia
         return $this->belongsToMany(SiteLog::class, 'site_log_task')
             ->withPivot(['progress_percent', 'notes'])
             ->withTimestamps();
+    }
+
+    public function statusTransitions(): HasMany
+    {
+        return $this->hasMany(TaskStatusTransition::class);
     }
 }

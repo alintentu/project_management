@@ -50,7 +50,14 @@ final class ProjectFlowDashboardTest extends TestCase
 
         $response = $this->getJson(route('projects.insights.flow', $project));
 
-        $response->assertOk()->assertJson(fn (AssertableJson $json) => $json
+        $response->assertOk();
+
+        $cacheControl = $response->headers->get('Cache-Control');
+        $this->assertNotNull($cacheControl);
+        $this->assertStringContainsString('no-store', $cacheControl);
+        $this->assertStringContainsString('must-revalidate', $cacheControl);
+
+        $response->assertJson(fn (AssertableJson $json) => $json
             ->where('project.id', $project->id)
             ->where('project.name', $project->name)
             ->where('insights.summary.total', 3)
@@ -63,6 +70,10 @@ final class ProjectFlowDashboardTest extends TestCase
             ->has('insights.summary.velocity')
             ->where('insights.summary.review_ratio', 1 / 3)
             ->where('insights.focus', 'Finalize review for 1 tasks before starting new work.')
+            ->where('insights.meta.generated_at', fn ($value) => is_string($value) && $value !== '')
+            ->where('insights.meta.project_updated_at', fn ($value) => $value === null || is_string($value))
+            ->where('insights.meta.last_transition_at', fn ($value) => $value === null || is_string($value))
+            ->etc()
         );
     }
 }

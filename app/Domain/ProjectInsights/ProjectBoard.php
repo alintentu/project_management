@@ -56,7 +56,7 @@ final class ProjectBoard
         return array_values($this->tasks);
     }
 
-    public function moveTask(string $taskId, string $status): void
+    public function moveTask(string $taskId, string $status, ?DateTimeImmutable $occurredAt = null): void
     {
         $task = $this->assertPresent($taskId);
         $previousStatus = $task->status();
@@ -65,12 +65,14 @@ final class ProjectBoard
             return;
         }
 
-        $task->moveTo($status);
+        $task->moveTo($status, $occurredAt);
 
         $this->statusTransitions[$status] ??= 0;
         $this->statusTransitions[$status]++;
 
-        $this->events->dispatch(new TaskStatusChanged($taskId, $previousStatus, $status));
+        $eventTimestamp = $occurredAt ?? new DateTimeImmutable('now');
+
+        $this->events->dispatch(new TaskStatusChanged($taskId, $previousStatus, $status, $eventTimestamp));
     }
 
     /**

@@ -58,6 +58,9 @@ final class DashboardFlowInsightsTest extends TestCase
             ->where('flowInsights.summary.total', 3)
             ->where('flowInsights.summary.status.in_review', 1)
             ->where('flowInsights.focus', 'Finalize review for 1 tasks before starting new work.')
+            ->where('flowInsights.meta.generated_at', fn ($value) => is_string($value) && $value !== '')
+            ->where('flowInsights.meta.project_updated_at', fn ($value) => $value === null || is_string($value))
+            ->etc()
         );
     }
 }

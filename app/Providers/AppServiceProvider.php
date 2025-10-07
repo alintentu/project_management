@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Models\Task;
+use App\Observers\TaskObserver;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -28,6 +30,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Vite::prefetch(concurrency: 3);
+
+        Task::observe(TaskObserver::class);
 
         $this->ensureStoragePaths();
         $this->ensureSqliteDatabase();
