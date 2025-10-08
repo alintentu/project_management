@@ -32,6 +32,7 @@ final class ProjectFlowDashboardTest extends TestCase
         Task::factory()->backlog()->create([
             'project_id' => $project->id,
             'title' => 'Draft requirements',
+            'created_at' => Carbon::now()->subDays(10),
         ]);
 
         Task::factory()->state([
@@ -40,11 +41,13 @@ final class ProjectFlowDashboardTest extends TestCase
         ])->create([
             'project_id' => $project->id,
             'title' => 'Implement authentication',
+            'created_at' => Carbon::now()->subDays(6),
         ]);
 
         Task::factory()->done()->create([
             'project_id' => $project->id,
             'title' => 'Ship landing page',
+            'created_at' => Carbon::now()->subDays(8),
             'actual_end_date' => Carbon::now()->subDays(2),
         ]);
 
@@ -69,6 +72,14 @@ final class ProjectFlowDashboardTest extends TestCase
             )
             ->has('insights.summary.velocity')
             ->where('insights.summary.review_ratio', 1 / 3)
+            ->has('insights.summary.cycle_time', fn (AssertableJson $cycle) => $cycle
+                ->where('samples', 1)
+                ->where('average_days', fn ($value) => is_float($value))
+                ->where('median_days', fn ($value) => is_float($value))
+            )
+            ->has('insights.summary.aging_wip', fn (AssertableJson $aging) => $aging
+                ->etc()
+            )
             ->where('insights.focus', 'Finalize review for 1 tasks before starting new work.')
             ->where('insights.meta.generated_at', fn ($value) => is_string($value) && $value !== '')
             ->where('insights.meta.project_updated_at', fn ($value) => $value === null || is_string($value))

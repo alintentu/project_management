@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\ProjectInsights;
 
 use DateTimeImmutable;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Reactive dashboard surface combining flow metrics and actionable nudges.
@@ -57,17 +58,18 @@ final class ProjectDashboard
             'velocity' => $this->project->velocityTrend(),
             'review_ratio' => $this->project->reviewRatio(),
             'transitions' => $this->project->transitions(),
+            'cycle_time' => $this->project->cycleTimeMetrics(),
+            'aging_wip' => $this->project->agingWorkInProgress(),
         ];
     }
 
     private function logStatusChange(TaskStatusChanged $event): void
     {
-        printf(
-            "[%s] Task %s moved from %s to %s\n",
-            $event->occurredAt()->format(DateTimeImmutable::ATOM),
-            $event->taskId(),
-            strtoupper($event->previous()),
-            strtoupper($event->next())
-        );
+        Log::info('project_flow.task_status_changed', [
+            'occurred_at' => $event->occurredAt()->format(DateTimeImmutable::ATOM),
+            'task_id' => $event->taskId(),
+            'previous_status' => $event->previous(),
+            'next_status' => $event->next(),
+        ]);
     }
 }

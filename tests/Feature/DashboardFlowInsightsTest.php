@@ -32,6 +32,7 @@ final class DashboardFlowInsightsTest extends TestCase
         Task::factory()->backlog()->create([
             'project_id' => $project->id,
             'title' => 'Draft requirements',
+            'created_at' => Carbon::now()->subDays(9),
         ]);
 
         Task::factory()->state([
@@ -40,11 +41,13 @@ final class DashboardFlowInsightsTest extends TestCase
         ])->create([
             'project_id' => $project->id,
             'title' => 'Implement authentication',
+            'created_at' => Carbon::now()->subDays(5),
         ]);
 
         Task::factory()->done()->create([
             'project_id' => $project->id,
             'title' => 'Ship landing page',
+            'created_at' => Carbon::now()->subDays(7),
             'actual_end_date' => Carbon::now()->subDay(),
         ]);
 
@@ -57,6 +60,8 @@ final class DashboardFlowInsightsTest extends TestCase
             ->where('initialProjectId', $project->id)
             ->where('flowInsights.summary.total', 3)
             ->where('flowInsights.summary.status.in_review', 1)
+            ->where('flowInsights.summary.cycle_time.samples', 1)
+            ->where('flowInsights.summary.aging_wip', fn ($value) => is_iterable($value))
             ->where('flowInsights.focus', 'Finalize review for 1 tasks before starting new work.')
             ->where('flowInsights.meta.generated_at', fn ($value) => is_string($value) && $value !== '')
             ->where('flowInsights.meta.project_updated_at', fn ($value) => $value === null || is_string($value))
