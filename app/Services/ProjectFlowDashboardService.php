@@ -24,92 +24,31 @@ final class ProjectFlowDashboardService
     public function build(Project $project): ProjectDashboard
     {
         $project->loadMissing('tasks.assignee');
-
         $this->lastTransitionAt = null;
 
         $events = new DomainEvents();
-        $board = new ProjectBoard(
-            (string) $project->getKey(),
-            $project->name ?? 'Unnamed project',
-            $events
-        );
+        $board = $this->makeBoard($project, $events);
 
-        $insightTasks = [];
-        $targetStatuses = [];
+        [$insightTasks, $targetStatuses] = $this->hydrateBoard($board, $project->tasks);
 
-        /** @var Task $task */
-        foreach ($project->tasks as $task) {
-            [$insightTask, $targetStatus] = $this->makeInsightTask($task);
-            $board->addTask($insightTask);
-            $taskId = (int) $task->getKey();
+        $transitionsApplied = $this->applyTransitions($board, $targetStatuses);
 
-            $insightTasks[$taskId] = $insightTask;
-            $targetStatuses[$taskId] = $targetStatus;
-        }
-
-        $taskIds = array_keys($targetStatuses);
-        $transitionsApplied = array_fill_keys($taskIds, false);
-
-        if ($taskIds !== []) {
-            $transitions = TaskStatusTransition::query()
-                ->whereIn('task_id', $taskIds)
-                ->orderBy('occurred_at')
-                ->orderBy('id')
-                ->get();
-
-            foreach ($transitions as $transition) {
-                $taskId = (int) $transition->task_id;
-                $status = $transition->to_status;
-
-                if (! isset($targetStatuses[$taskId])) {
-                    continue;
-                }
-
-                try {
-                    WorkflowStatus::assertValid($status);
-                } catch (InvalidArgumentException) {
-                    continue;
-                }
-
-                $occurredAt = $transition->occurred_at
-                    ? DateTimeImmutable::createFromInterface($transition->occurred_at)
-                    : null;
-
-                $board->moveTask((string) $taskId, $status, $occurredAt);
-                $transitionsApplied[$taskId] = true;
-                $this->registerTransitionTime($occurredAt);
-            }
-        }
-
-        foreach ($targetStatuses as $taskId => $targetStatus) {
-            if ($targetStatus === WorkflowStatus::BACKLOG) {
-                continue;
-            }
-
-            $currentStatus = $insightTasks[$taskId]->status();
-            $hasTransitions = $transitionsApplied[$taskId] ?? false;
-
-            if (! $hasTransitions) {
-                if ($currentStatus !== $targetStatus) {
-                    $insightTasks[$taskId]->moveTo($targetStatus);
-                }
-
-                continue;
-            }
-
-            if ($currentStatus === $targetStatus) {
-                continue;
-            }
-
-            $timestamp = new DateTimeImmutable('now');
-
-            $board->moveTask((string) $taskId, $targetStatus, $timestamp);
-            $this->registerTransitionTime($timestamp);
-        }
+        $this->synchronizeTargetStatuses($board, $insightTasks, $targetStatuses, $transitionsApplied);
 
         return new ProjectDashboard($board, $events);
     }
 
+    /**
+     * @return array{
+     *     summary: array<string, mixed>,
+     *     focus: ?string,
+     *     meta: array{
+     *         generated_at: string,
+     *         project_updated_at: ?string,
+     *         last_transition_at: ?string
+     *     }
+     * }
+     */
     public function snapshot(Project $project): array
     {
         $dashboard = $this->build($project);
@@ -125,6 +64,129 @@ final class ProjectFlowDashboardService
                 'last_transition_at' => $this->lastTransitionAt?->format(DateTimeInterface::ATOM),
             ],
         ];
+    }
+
+    private function makeBoard(Project $project, DomainEvents $events): ProjectBoard
+    {
+        return new ProjectBoard(
+            (string) $project->getKey(),
+            $project->name ?? 'Unnamed project',
+            $events
+        );
+    }
+
+    /**
+     * @param iterable<Task> $tasks
+     * @return array{
+     *     0: array<int, InsightTask>,
+     *     1: array<int, string>
+     * }
+     */
+    private function hydrateBoard(ProjectBoard $board, iterable $tasks): array
+    {
+        $insightTasks = [];
+        $targetStatuses = [];
+
+        /** @var Task $task */
+        foreach ($tasks as $task) {
+            [$insightTask, $targetStatus] = $this->makeInsightTask($task);
+            $board->addTask($insightTask);
+
+            $taskId = (int) $task->getKey();
+            $insightTasks[$taskId] = $insightTask;
+            $targetStatuses[$taskId] = $targetStatus;
+        }
+
+        return [$insightTasks, $targetStatuses];
+    }
+
+    /**
+     * @param array<int, string> $targetStatuses
+     * @return array<int, bool>
+     */
+    private function applyTransitions(ProjectBoard $board, array $targetStatuses): array
+    {
+        if ($targetStatuses === []) {
+            return [];
+        }
+
+        $taskIds = array_keys($targetStatuses);
+        $transitionsApplied = array_fill_keys($taskIds, false);
+
+        $transitions = TaskStatusTransition::query()
+            ->whereIn('task_id', $taskIds)
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($transitions as $transition) {
+            $taskId = (int) $transition->task_id;
+            $status = $transition->to_status;
+
+            if (! isset($targetStatuses[$taskId])) {
+                continue;
+            }
+
+            try {
+                WorkflowStatus::assertValid($status);
+            } catch (InvalidArgumentException) {
+                continue;
+            }
+
+            $occurredAt = $transition->occurred_at
+                ? DateTimeImmutable::createFromInterface($transition->occurred_at)
+                : null;
+
+            $board->moveTask((string) $taskId, $status, $occurredAt);
+            $transitionsApplied[$taskId] = true;
+            $this->registerTransitionTime($occurredAt);
+        }
+
+        return $transitionsApplied;
+    }
+
+    /**
+     * @param array<int, InsightTask> $insightTasks
+     * @param array<int, string> $targetStatuses
+     * @param array<int, bool> $transitionsApplied
+     */
+    private function synchronizeTargetStatuses(
+        ProjectBoard $board,
+        array $insightTasks,
+        array $targetStatuses,
+        array $transitionsApplied
+    ): void {
+        foreach ($targetStatuses as $taskId => $targetStatus) {
+            if ($targetStatus === WorkflowStatus::BACKLOG) {
+                continue;
+            }
+
+            $task = $insightTasks[$taskId] ?? null;
+
+            if ($task === null) {
+                continue;
+            }
+
+            $currentStatus = $task->status();
+            $hasTransitions = $transitionsApplied[$taskId] ?? false;
+
+            if (! $hasTransitions) {
+                if ($currentStatus !== $targetStatus) {
+                    $task->moveTo($targetStatus);
+                }
+
+                continue;
+            }
+
+            if ($currentStatus === $targetStatus) {
+                continue;
+            }
+
+            $timestamp = new DateTimeImmutable('now');
+
+            $board->moveTask((string) $taskId, $targetStatus, $timestamp);
+            $this->registerTransitionTime($timestamp);
+        }
     }
 
     /**

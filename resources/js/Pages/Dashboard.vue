@@ -96,6 +96,24 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
     timeStyle: 'short',
 });
 
+const cycleTimeFormatter = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+});
+
+const wipAgeFormatter = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+});
+
+const toDayString = (value, formatter = cycleTimeFormatter) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+        return null;
+    }
+
+    return `${formatter.format(value)}d`;
+};
+
 const statusBreakdown = computed(() => {
     const summary = insights.value?.summary?.status ?? {};
 
@@ -126,6 +144,58 @@ const formattedReviewRatio = computed(() => {
 const transitions = computed(
     () => insights.value?.summary?.transitions ?? {}
 );
+
+const cycleTimeStats = computed(() => {
+    const data = insights.value?.summary?.cycle_time;
+
+    if (!data || typeof data !== 'object') {
+        return null;
+    }
+
+    const average = typeof data.average_days === 'number' ? data.average_days : null;
+    const median = typeof data.median_days === 'number' ? data.median_days : null;
+    const samples = typeof data.samples === 'number' ? data.samples : 0;
+
+    return {
+        average,
+        median,
+        samples,
+    };
+});
+
+const cycleTimeDisplay = computed(() => {
+    if (!cycleTimeStats.value) {
+        return {
+            averageLabel: '—',
+            medianLabel: '—',
+            samples: 0,
+        };
+    }
+
+    const { average, median, samples } = cycleTimeStats.value;
+
+    return {
+        averageLabel: toDayString(average) ?? '—',
+        medianLabel: toDayString(median) ?? '—',
+        samples,
+    };
+});
+
+const agingWipEntries = computed(() => {
+    const items = Array.isArray(insights.value?.summary?.aging_wip)
+        ? insights.value.summary.aging_wip
+        : [];
+
+    return items.map((item) => {
+        const statusMeta = statusesByValue.value[item.status] ?? null;
+
+        return {
+            ...item,
+            statusLabel: statusMeta?.label ?? item.status.replace(/_/g, ' '),
+            formattedAge: toDayString(item.age_days ?? null, wipAgeFormatter) ?? '0d',
+        };
+    });
+});
 
 const velocityEntries = computed(() => {
     const velocity = insights.value?.summary?.velocity ?? {};
@@ -851,7 +921,7 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
                                     </div>
                                 </div>
 
-                                <div class="grid gap-4 sm:grid-cols-2">
+                                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                                     <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                                         <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
                                             Total tasks
@@ -871,9 +941,21 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
                                             Share of work currently waiting in review.
                                         </p>
                                     </div>
+                                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                            Average cycle time
+                                        </p>
+                                        <p class="mt-2 text-3xl font-semibold text-slate-900">
+                                            {{ cycleTimeDisplay.averageLabel }}
+                                        </p>
+                                        <p class="mt-1 text-xs text-slate-500">
+                                            Median {{ cycleTimeDisplay.medianLabel }} · {{ cycleTimeDisplay.samples }}
+                                            completed task{{ cycleTimeDisplay.samples === 1 ? '' : 's' }}.
+                                        </p>
+                                    </div>
                                 </div>
 
-                                <div class="grid gap-4 lg:grid-cols-2">
+                                <div class="grid gap-4 lg:grid-cols-3">
                                     <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                                         <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
                                             Weekly velocity
@@ -921,6 +1003,36 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
                                                 class="rounded border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
                                             >
                                                 Flow transitions will appear after tasks advance.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                        <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                            Aging work in progress
+                                        </h4>
+                                        <ul class="mt-3 space-y-2 text-sm text-slate-600">
+                                            <li
+                                                v-for="task in agingWipEntries"
+                                                :key="task.task_id"
+                                                class="rounded border border-slate-100 px-3 py-2"
+                                            >
+                                                <p class="font-medium text-slate-700">
+                                                    {{ task.title }}
+                                                </p>
+                                                <p class="mt-1 flex items-center justify-between text-xs text-slate-500">
+                                                    <span>
+                                                        {{ statusesByValue[task.status]?.label ?? task.statusLabel }}
+                                                    </span>
+                                                    <span class="font-semibold text-slate-600">
+                                                        {{ task.formattedAge }}
+                                                    </span>
+                                                </p>
+                                            </li>
+                                            <li
+                                                v-if="agingWipEntries.length === 0"
+                                                class="rounded border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
+                                            >
+                                                No active work items are aging.
                                             </li>
                                         </ul>
                                     </div>

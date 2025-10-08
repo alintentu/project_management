@@ -139,6 +139,98 @@ final class ProjectBoard
         return $breaches;
     }
 
+    /**
+     * @return array{average_days: float, median_days: float, samples: int}
+     */
+    public function cycleTimeMetrics(): array
+    {
+        $durations = [];
+
+        foreach ($this->tasks as $task) {
+            $completedAt = $task->completedAt();
+
+            if ($completedAt === null) {
+                continue;
+            }
+
+            $seconds = max(
+                $completedAt->getTimestamp() - $task->createdAt()->getTimestamp(),
+                0
+            );
+
+            if ($seconds > 0) {
+                $durations[] = $seconds;
+            }
+        }
+
+        if ($durations === []) {
+            return [
+                'average_days' => 0.0,
+                'median_days' => 0.0,
+                'samples' => 0,
+            ];
+        }
+
+        sort($durations);
+
+        $samples = count($durations);
+        $averageSeconds = array_sum($durations) / $samples;
+        $middle = intdiv($samples, 2);
+
+        if ($samples % 2 === 0) {
+            $medianSeconds = ($durations[$middle - 1] + $durations[$middle]) / 2;
+        } else {
+            $medianSeconds = $durations[$middle];
+        }
+
+        return [
+            'average_days' => round($averageSeconds / 86400, 2),
+            'median_days' => round($medianSeconds / 86400, 2),
+            'samples' => $samples,
+        ];
+    }
+
+    /**
+     * @return array<int, array{task_id: string, title: string, status: string, age_days: float}>
+     */
+    public function agingWorkInProgress(int $limit = 5): array
+    {
+        $wipTasks = array_filter(
+            $this->tasks,
+            static fn (InsightTask $task) => in_array(
+                $task->status(),
+                [WorkflowStatus::IN_PROGRESS, WorkflowStatus::IN_REVIEW],
+                true
+            )
+        );
+
+        if ($wipTasks === []) {
+            return [];
+        }
+
+        $now = new DateTimeImmutable('now');
+
+        $aging = array_map(
+            static fn (InsightTask $task) => [
+                'task_id' => $task->id(),
+                'title' => $task->title(),
+                'status' => $task->status(),
+                'age_days' => round(
+                    max($now->getTimestamp() - $task->createdAt()->getTimestamp(), 0) / 86400,
+                    1
+                ),
+            ],
+            $wipTasks
+        );
+
+        usort(
+            $aging,
+            static fn (array $a, array $b) => $b['age_days'] <=> $a['age_days']
+        );
+
+        return array_slice($aging, 0, $limit);
+    }
+
     private function doneBetween(DateTimeImmutable $start, DateTimeImmutable $end): int
     {
         return count(array_filter(
