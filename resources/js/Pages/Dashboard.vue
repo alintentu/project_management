@@ -145,6 +145,33 @@ const transitions = computed(
     () => insights.value?.summary?.transitions ?? {}
 );
 
+const trendPoints = computed(() => {
+    if (!Array.isArray(insights.value?.trend?.points)) {
+        return [];
+    }
+
+    return insights.value.trend.points.map((point) => {
+        const captured = point.captured_at ? new Date(point.captured_at) : null;
+
+        return {
+            ...point,
+            captured_at: captured,
+        };
+    });
+});
+
+const recentTrend = computed(() =>
+    trendPoints.value
+        .slice(-5)
+        .reverse()
+        .map((point) => ({
+            ...point,
+            formattedCapturedAt: point.captured_at
+                ? dateTimeFormatter.format(point.captured_at)
+                : '—',
+        }))
+);
+
 const alertSeverityMeta = {
     info: {
         icon: 'ℹ️',
@@ -1021,7 +1048,7 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
                                     </div>
                                 </div>
 
-                                <div class="grid gap-4 lg:grid-cols-3">
+                                <div class="grid gap-4 lg:grid-cols-3 xl:grid-cols-4">
                                     <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                                         <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
                                             Weekly velocity
@@ -1099,6 +1126,34 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
                                                 class="rounded border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
                                             >
                                                 No active work items are aging.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                        <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                            Flow trend (recent)
+                                        </h4>
+                                        <ul class="mt-3 space-y-2 text-sm text-slate-600">
+                                            <li
+                                                v-for="point in recentTrend"
+                                                :key="point.captured_at?.toISOString?.() ?? point.formattedCapturedAt"
+                                                class="flex flex-col rounded border border-slate-100 px-3 py-2"
+                                            >
+                                                <span class="text-xs uppercase tracking-wide text-slate-400">
+                                                    {{ point.formattedCapturedAt }}
+                                                </span>
+                                                <span class="mt-1 font-medium text-slate-700">
+                                                    Total {{ point.total }} · Done {{ point.done }}
+                                                </span>
+                                                <span class="text-xs text-slate-500">
+                                                    Cycle avg {{ point.cycle_time_average_days ?? '—' }}d · Alerts {{ point.alerts_count }}
+                                                </span>
+                                            </li>
+                                            <li
+                                                v-if="recentTrend.length === 0"
+                                                class="rounded border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
+                                            >
+                                                Trend points will appear after snapshots are captured.
                                             </li>
                                         </ul>
                                     </div>

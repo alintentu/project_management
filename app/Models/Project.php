@@ -54,4 +54,9 @@ class Project extends Model
     {
         return $this->hasMany(TaskStatusTransition::class);
     }
+
+    public function flowSnapshots(): HasMany
+    {
+        return $this->hasMany(ProjectFlowSnapshot::class);
+    }
 }

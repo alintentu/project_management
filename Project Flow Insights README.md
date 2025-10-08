@@ -9,5 +9,14 @@ On the application side, `ProjectFlowDashboardService` materialises the board fr
 
 Task status transitions are now persisted in the `task_status_transitions` table via a dedicated observer that listens to `Task` creation and status updates. Every change is stamped with the originating project, previous/next status, the triggering user when available, and the exact transition timestamp. The analytics service replays these persisted transitions chronologically so velocity trends, transition counters, and completion timestamps align with historical reality even across restarts.
 
-The flow snapshot API also surfaces a polling-friendly `meta` block (generation time, project updated time, last recorded transition) and responds with `Cache-Control` directives that disable caching. On the UI, the dashboard ships with an interactive flow insights panel: a project selector, snapshot metadata, auto-refresh polling every 60 seconds, and focus toasts that pop whenever the recommended next action changes. The visualization includes quick totals, review ratio, per-status counts, weekly velocity history, and transition frequencies so delivery teams can spot bottlenecks at a glance.
+The flow snapshot API also surfaces a polling-friendly `meta` block (generation time, project updated time, last recorded transition) and responds with `Cache-Control` directives that disable caching. On the UI, the dashboard ships with an interactive flow insights panel: a project selector, snapshot metadata, auto-refresh polling every 60 seconds, and focus toasts that pop whenever the recommended next action changes. The visualization includes quick totals, review ratio, per-status counts, weekly velocity history, and transition frequencies so delivery teams can spot bottlenecks at a glance. Flow alerts are emitted whenever cycle time exceeds healthy limits, WIP ages beyond thresholds, the backlog empties, or column limits are breached; they appear inline in the dashboard and are stored with each snapshot for historical review.
 
+## Historical snapshots & scheduling
+
+To power trend analysis, every project can persist hourly snapshots in the `project_flow_snapshots` table. The `ProjectFlowSnapshotService` reuses the live dashboard payload, saving the summary, focus recommendation, alerts, and metadata at a given timestamp (idempotent per project + captured_at). Snapshots can be captured manually via:
+
+```bash
+php artisan flow:snapshots:capture --project=123 --backfill-hours=4
+```
+
+Without arguments the command iterates all projects. The bootstrap configuration registers this command for the scheduler, running it hourly with `withoutOverlapping()` to avoid duplicate captures. Downstream consumers can fetch historical data through `GET /projects/{project}/insights/flow/history`, which returns the most recent snapshots (capped at 200) together with the project summary for charting or BI.

@@ -82,5 +82,8 @@ final class ProjectFlowDashboardServiceTest extends TestCase
         $this->assertNotEmpty($snapshot['alerts']);
         $alertTypes = array_column($snapshot['alerts'], 'type');
         $this->assertContains('aging_wip_tasks', $alertTypes);
+
+        $this->assertArrayHasKey('trend', $snapshot);
+        $this->assertNotEmpty($snapshot['trend']['points']);
     }
 }

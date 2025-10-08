@@ -5,6 +5,7 @@ use App\Http\Controllers\PlanningController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectFlowDashboardController;
+use App\Http\Controllers\ProjectFlowSnapshotController;
 use App\Http\Controllers\TaskAssigneeController;
 use App\Http\Controllers\TaskAttachmentController;
 use App\Http\Controllers\TaskOrderController;
@@ -51,6 +52,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/projects/{project}/insights/flow', ProjectFlowDashboardController::class)
         ->name('projects.insights.flow');
+    Route::get('/projects/{project}/insights/flow/history', [ProjectFlowSnapshotController::class, 'index'])
+        ->name('projects.insights.flow.history');
 
     Route::patch('/tasks/{task}/assignee', TaskAssigneeController::class)
         ->name('tasks.assignee');

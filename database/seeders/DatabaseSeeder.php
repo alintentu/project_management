@@ -9,6 +9,7 @@ use App\Models\SiteLog;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\WorkBreakdownStructure;
+use App\Services\ProjectFlowSnapshotService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
@@ -37,6 +38,50 @@ class DatabaseSeeder extends Seeder
         );
 
         $user->syncRoles(['admin']);
+
+        $additionalUsers = [
+            ['name' => 'Maria Ionescu', 'email' => 'maria.ionescu@example.com', 'role' => 'project_manager'],
+            ['name' => 'Andrei Marinescu', 'email' => 'andrei.marinescu@example.com', 'role' => 'site_manager'],
+            ['name' => 'Ioana Pop', 'email' => 'ioana.pop@example.com', 'role' => 'engineer'],
+            ['name' => 'Vlad Georgescu', 'email' => 'vlad.georgescu@example.com', 'role' => 'architect'],
+            ['name' => 'Elena Dumitrescu', 'email' => 'elena.dumitrescu@example.com', 'role' => 'qaqc_manager'],
+            ['name' => 'Cristian Petrescu', 'email' => 'cristian.petrescu@example.com', 'role' => 'constructor'],
+            ['name' => 'Oana Filip', 'email' => 'oana.filip@example.com', 'role' => 'document_controller'],
+            ['name' => 'Radu Mihalache', 'email' => 'radu.mihalache@example.com', 'role' => 'client'],
+        ];
+
+        $assignees = collect([$user]);
+
+        foreach ($additionalUsers as $seedUser) {
+            $createdUser = User::firstOrCreate(
+                ['email' => $seedUser['email']],
+                [
+                    'name' => $seedUser['name'],
+                    'password' => Hash::make('password'),
+                    'email_verified_at' => now(),
+                ]
+            );
+
+            if (! empty($seedUser['role'])) {
+                $createdUser->syncRoles([$seedUser['role']]);
+            }
+
+            $assignees->push($createdUser);
+        }
+
+        $assigneePool = $assignees->values();
+        $assigneeIndex = 0;
+
+        $pickAssignee = function () use (&$assigneeIndex, $assigneePool): ?User {
+            if ($assigneePool->isEmpty()) {
+                return null;
+            }
+
+            $user = $assigneePool[$assigneeIndex % $assigneePool->count()];
+            $assigneeIndex++;
+
+            return $user;
+        };
 
         $projectsSeed = [
             [
@@ -364,6 +409,9 @@ class DatabaseSeeder extends Seeder
             ],
         ];
 
+        /** @var ProjectFlowSnapshotService $snapshotService */
+        $snapshotService = app(ProjectFlowSnapshotService::class);
+
         foreach ($projectsSeed as $projectData) {
             $project = Project::updateOrCreate([
                 'code' => $projectData['code'],
@@ -383,7 +431,7 @@ class DatabaseSeeder extends Seeder
 
             $tasksByTitle = [];
 
-            $createWbs = function (array $nodes, Project $project, ?int $parentId) use (&$createWbs, &$tasksByTitle, $user) {
+            $createWbs = function (array $nodes, Project $project, ?int $parentId) use (&$createWbs, &$tasksByTitle, $user, $pickAssignee) {
                 foreach ($nodes as $position => $node) {
                     $wbs = WorkBreakdownStructure::updateOrCreate([
                         'project_id' => $project->id,
@@ -400,13 +448,15 @@ class DatabaseSeeder extends Seeder
                     $tasks = $node['tasks'] ?? [];
 
                     foreach ($tasks as $index => $taskData) {
+                        $assignee = $pickAssignee();
+
                         $task = Task::create([
                             'project_id' => $project->id,
                             'wbs_id' => $wbs->id,
                             'title' => $taskData['title'],
                             'description' => $taskData['description'] ?? null,
                             'status' => $taskData['status'] ?? TaskStatus::BACKLOG->value,
-                            'assigned_to_id' => $user->id,
+                            'assigned_to_id' => $assignee?->id,
                             'planned_start_date' => optional($taskData['planned_start'] ?? null)->toDateString(),
                             'planned_end_date' => optional($taskData['planned_end'] ?? null)->toDateString(),
                             'actual_start_date' => optional($taskData['actual_start'] ?? null)->toDateString(),
@@ -465,11 +515,13 @@ class DatabaseSeeder extends Seeder
             }
 
             foreach ($projectData['site_logs'] as $logData) {
+                $logAuthor = $assigneePool->isNotEmpty() ? $assigneePool->random() : $user;
+
                 $siteLog = SiteLog::updateOrCreate([
                     'project_id' => $project->id,
                     'log_date' => optional($logData['date'])->toDateString(),
                 ], [
-                    'author_id' => $user->id,
+                    'author_id' => $logAuthor?->id ?? $user->id,
                     'weather' => $logData['weather'] ?? null,
                     'temperature' => $logData['temperature'] ?? null,
                     'manpower_count' => $logData['manpower_count'] ?? null,
@@ -491,6 +543,13 @@ class DatabaseSeeder extends Seeder
                         ],
                     ]);
                 }
+            }
+
+            $referenceDate = Carbon::today()->setHour(9);
+
+            for ($day = 0; $day < 5; $day++) {
+                $timestamp = $referenceDate->copy()->subDays($day);
+                $snapshotService->capture($project, $timestamp);
             }
         }
     }

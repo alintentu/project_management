@@ -67,6 +67,9 @@ final class DashboardFlowInsightsTest extends TestCase
                 ->where('0.severity', 'warning')
                 ->etc()
             )
+            ->has('flowInsights.trend.points', fn (Assert $points) => $points
+                ->etc()
+            )
             ->where('flowInsights.focus', 'Finalize review for 1 tasks before starting new work.')
             ->where('flowInsights.meta.generated_at', fn ($value) => is_string($value) && $value !== '')
             ->where('flowInsights.meta.project_updated_at', fn ($value) => $value === null || is_string($value))

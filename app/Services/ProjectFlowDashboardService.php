@@ -14,6 +14,7 @@ use App\Enums\TaskStatus as TaskStatusEnum;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskStatusTransition;
+use App\Models\ProjectFlowSnapshot;
 use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
@@ -56,13 +57,22 @@ final class ProjectFlowDashboardService
         $generatedAt = new DateTimeImmutable('now');
         $projectUpdatedAt = $this->toImmutable($project->updated_at);
 
+        $summary = $dashboard->summary();
+        $focus = $dashboard->focusSuggestion();
+        $alerts = $dashboard->alerts();
+
+        $history = $this->trendPoints($project, $summary, $alerts, $focus, $generatedAt);
+
         return [
-            'summary' => $dashboard->summary(),
-            'focus' => $dashboard->focusSuggestion(),
+            'summary' => $summary,
+            'focus' => $focus,
             'alerts' => array_map(
                 static fn (FlowAlert $alert) => $alert->toArray(),
-                $dashboard->alerts()
+                $alerts
             ),
+            'trend' => [
+                'points' => $history,
+            ],
             'meta' => [
                 'generated_at' => $generatedAt->format(DateTimeInterface::ATOM),
                 'project_updated_at' => $projectUpdatedAt?->format(DateTimeInterface::ATOM),
@@ -192,6 +202,88 @@ final class ProjectFlowDashboardService
             $board->moveTask((string) $taskId, $targetStatus, $timestamp);
             $this->registerTransitionTime($timestamp);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @param array<int, FlowAlert> $alerts
+     * @return array<int, array<string, mixed>>
+     */
+    private function trendPoints(
+        Project $project,
+        array $summary,
+        array $alerts,
+        ?string $focus,
+        DateTimeImmutable $generatedAt,
+        int $limit = 50
+    ): array {
+        $history = ProjectFlowSnapshot::query()
+            ->where('project_id', $project->getKey())
+            ->orderByDesc('captured_at')
+            ->limit($limit)
+            ->get();
+
+        $points = [];
+
+        foreach ($history as $snapshot) {
+            $points[] = $this->makeTrendPoint(
+                $this->toImmutable($snapshot->captured_at) ?? new DateTimeImmutable('now'),
+                is_array($snapshot->summary) ? $snapshot->summary : [],
+                is_array($snapshot->alerts) ? $snapshot->alerts : [],
+                $snapshot->focus
+            );
+        }
+
+        $currentPoint = $this->makeTrendPoint($generatedAt, $summary, array_map(
+            static fn (FlowAlert $alert) => $alert->toArray(),
+            $alerts
+        ), $focus);
+
+        if ($points === [] || ($points[0]['captured_at'] ?? null) !== $currentPoint['captured_at']) {
+            $points[] = $currentPoint;
+        }
+
+        usort($points, static fn (array $a, array $b) => strcmp($a['captured_at'], $b['captured_at']));
+
+        return $points;
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @param array<int, mixed> $alerts
+     * @return array<string, mixed>
+     */
+    private function makeTrendPoint(DateTimeInterface $capturedAt, array $summary, array $alerts, ?string $focus): array
+    {
+        if (! $capturedAt instanceof DateTimeImmutable) {
+            $capturedAt = DateTimeImmutable::createFromInterface($capturedAt);
+        }
+
+        $status = $summary['status'] ?? [];
+        $cycle = $summary['cycle_time'] ?? [];
+        $aging = $summary['aging_wip'] ?? [];
+
+        $maxAge = null;
+
+        if (is_array($aging) && $aging !== []) {
+            $maxAge = max(array_map(static fn ($item) => is_array($item) ? ($item['age_days'] ?? null) : null, $aging));
+            $maxAge = is_numeric($maxAge) ? (float) $maxAge : null;
+        }
+
+        return [
+            'captured_at' => $capturedAt->format(DateTimeInterface::ATOM),
+            'total' => (int) ($summary['total'] ?? 0),
+            'backlog' => (int) ($status[WorkflowStatus::BACKLOG] ?? 0),
+            'in_progress' => (int) ($status[WorkflowStatus::IN_PROGRESS] ?? 0),
+            'in_review' => (int) ($status[WorkflowStatus::IN_REVIEW] ?? 0),
+            'done' => (int) ($status[WorkflowStatus::DONE] ?? 0),
+            'review_ratio' => isset($summary['review_ratio']) ? (float) $summary['review_ratio'] : 0.0,
+            'cycle_time_average_days' => isset($cycle['average_days']) ? (float) $cycle['average_days'] : null,
+            'cycle_time_samples' => (int) ($cycle['samples'] ?? 0),
+            'alerts_count' => is_countable($alerts) ? count($alerts) : 0,
+            'max_aging_days' => $maxAge,
+            'focus' => $focus,
+        ];
     }
 
     /**

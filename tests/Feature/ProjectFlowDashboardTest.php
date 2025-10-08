@@ -85,6 +85,9 @@ final class ProjectFlowDashboardTest extends TestCase
                 ->where('0.severity', 'warning')
                 ->etc()
             )
+            ->has('insights.trend.points', fn (AssertableJson $points) => $points
+                ->etc()
+            )
             ->where('insights.focus', 'Finalize review for 1 tasks before starting new work.')
             ->where('insights.meta.generated_at', fn ($value) => is_string($value) && $value !== '')
             ->where('insights.meta.project_updated_at', fn ($value) => $value === null || is_string($value))
