@@ -28,7 +28,7 @@ final class ProjectFlowDashboardServiceTest extends TestCase
         /** @var Task $wipTask */
         $wipTask = Task::factory()->state([
             'status' => TaskStatus::IN_PROGRESS->value,
-            'created_at' => Carbon::now()->subDays(4),
+            'created_at' => Carbon::now()->subDays(6),
         ])->create([
             'project_id' => $project->id,
             'title' => 'Refine backlog',
@@ -78,5 +78,9 @@ final class ProjectFlowDashboardServiceTest extends TestCase
         $this->assertCount(1, $agingWip);
         $this->assertSame((string) $wipTask->id, $agingWip[0]['task_id']);
         $this->assertGreaterThanOrEqual(0, $agingWip[0]['age_days']);
+
+        $this->assertNotEmpty($snapshot['alerts']);
+        $alertTypes = array_column($snapshot['alerts'], 'type');
+        $this->assertContains('aging_wip_tasks', $alertTypes);
     }
 }

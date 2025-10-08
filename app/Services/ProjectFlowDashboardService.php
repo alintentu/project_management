@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Domain\ProjectInsights\DomainEvents;
+use App\Domain\ProjectInsights\FlowAlert;
 use App\Domain\ProjectInsights\InsightTask;
 use App\Domain\ProjectInsights\ProjectBoard;
 use App\Domain\ProjectInsights\ProjectDashboard;
@@ -58,6 +59,10 @@ final class ProjectFlowDashboardService
         return [
             'summary' => $dashboard->summary(),
             'focus' => $dashboard->focusSuggestion(),
+            'alerts' => array_map(
+                static fn (FlowAlert $alert) => $alert->toArray(),
+                $dashboard->alerts()
+            ),
             'meta' => [
                 'generated_at' => $generatedAt->format(DateTimeInterface::ATOM),
                 'project_updated_at' => $projectUpdatedAt?->format(DateTimeInterface::ATOM),

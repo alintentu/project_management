@@ -145,6 +145,40 @@ const transitions = computed(
     () => insights.value?.summary?.transitions ?? {}
 );
 
+const alertSeverityMeta = {
+    info: {
+        icon: 'ℹ️',
+        border: 'border-sky-200',
+        background: 'bg-sky-50',
+        text: 'text-sky-700',
+    },
+    warning: {
+        icon: '⚠️',
+        border: 'border-amber-200',
+        background: 'bg-amber-50',
+        text: 'text-amber-700',
+    },
+    critical: {
+        icon: '⛔',
+        border: 'border-rose-200',
+        background: 'bg-rose-50',
+        text: 'text-rose-700',
+    },
+};
+
+const flowAlerts = computed(() => {
+    const alerts = Array.isArray(insights.value?.alerts)
+        ? insights.value.alerts
+        : [];
+
+    return alerts.map((alert) => ({
+        ...alert,
+        severityMeta: alertSeverityMeta[alert.severity] ?? alertSeverityMeta.info,
+    }));
+});
+
+const hasFlowAlerts = computed(() => flowAlerts.value.length > 0);
+
 const cycleTimeStats = computed(() => {
     const data = insights.value?.summary?.cycle_time;
 
@@ -894,6 +928,38 @@ const moveTask = (fromStatus, toStatus, beforeTaskId = null) => {
                                 {{ flowError }}
                             </div>
                             <div v-else-if="insights" class="space-y-6">
+                                <div v-if="hasFlowAlerts" class="space-y-3">
+                                    <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Flow alerts
+                                    </h4>
+                                    <ul class="space-y-3">
+                                        <li
+                                            v-for="alert in flowAlerts"
+                                            :key="alert.type + alert.message"
+                                            class="rounded-lg border px-4 py-3 text-sm shadow-sm"
+                                            :class="[
+                                                alert.severityMeta.border,
+                                                alert.severityMeta.background,
+                                                alert.severityMeta.text,
+                                            ]"
+                                        >
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-lg" aria-hidden="true">
+                                                    {{ alert.severityMeta.icon }}
+                                                </span>
+                                                <div class="flex-1">
+                                                    <p class="font-semibold">
+                                                        {{ alert.message }}
+                                                    </p>
+                                                    <p class="mt-1 text-xs opacity-80">
+                                                        Severity: {{ alert.severity }}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                </div>
+
                                 <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                                     <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
                                         Focus suggestion

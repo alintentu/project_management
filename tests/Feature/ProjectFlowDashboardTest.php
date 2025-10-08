@@ -80,6 +80,11 @@ final class ProjectFlowDashboardTest extends TestCase
             ->has('insights.summary.aging_wip', fn (AssertableJson $aging) => $aging
                 ->etc()
             )
+            ->has('insights.alerts', fn (AssertableJson $alerts) => $alerts
+                ->where('0.type', 'aging_wip_tasks')
+                ->where('0.severity', 'warning')
+                ->etc()
+            )
             ->where('insights.focus', 'Finalize review for 1 tasks before starting new work.')
             ->where('insights.meta.generated_at', fn ($value) => is_string($value) && $value !== '')
             ->where('insights.meta.project_updated_at', fn ($value) => $value === null || is_string($value))

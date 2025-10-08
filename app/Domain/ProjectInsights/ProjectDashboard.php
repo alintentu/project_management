@@ -13,10 +13,16 @@ use Illuminate\Support\Facades\Log;
 final class ProjectDashboard
 {
     private ProjectBoard $project;
+    private FlowAlertEvaluator $alertEvaluator;
 
-    public function __construct(ProjectBoard $project, DomainEvents $events)
+    /** @var array<int, FlowAlert> */
+    private array $alerts = [];
+
+    public function __construct(ProjectBoard $project, DomainEvents $events, ?FlowAlertEvaluator $alertEvaluator = null)
     {
         $this->project = $project;
+        $this->alertEvaluator = $alertEvaluator ?? new FlowAlertEvaluator();
+        $this->alerts = $this->alertEvaluator->evaluate($project);
 
         $events->listen(TaskStatusChanged::class, function (TaskStatusChanged $event): void {
             $this->logStatusChange($event);
@@ -61,6 +67,14 @@ final class ProjectDashboard
             'cycle_time' => $this->project->cycleTimeMetrics(),
             'aging_wip' => $this->project->agingWorkInProgress(),
         ];
+    }
+
+    /**
+     * @return array<int, FlowAlert>
+     */
+    public function alerts(): array
+    {
+        return $this->alerts;
     }
 
     private function logStatusChange(TaskStatusChanged $event): void
